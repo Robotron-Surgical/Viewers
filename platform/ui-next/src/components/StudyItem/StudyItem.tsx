@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 import { ThumbnailList } from '../ThumbnailList';
+import { ChatBubbleIcon } from '@radix-ui/react-icons';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../Accordion';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../Tooltip';
@@ -79,7 +80,7 @@ const StudyItem = ({
                       onRunSegmentation(StudyInstanceUID);
                     }}
                     disabled={isProcessing}
-                    className="bg-primary hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed rounded px-2 py-0.5 text-[11px] font-semibold text-white"
+                    className="bg-primary hover:bg-primary/80 rounded px-2 py-0.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Segment
                   </button>
@@ -91,7 +92,7 @@ const StudyItem = ({
                       onReportClick(StudyInstanceUID);
                     }}
                     disabled={isProcessing}
-                    className="bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed rounded px-2 py-0.5 text-[11px] font-semibold text-white"
+                    className="bg-secondary hover:bg-secondary/80 rounded px-2 py-0.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Report
                   </button>
@@ -103,8 +104,9 @@ const StudyItem = ({
                       onChatWithReportClick(StudyInstanceUID);
                     }}
                     disabled={isProcessing}
-                    className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed rounded px-2 py-0.5 text-[11px] font-semibold text-white"
+                    className="flex items-center gap-1 rounded bg-orange-500 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
+                    <ChatBubbleIcon className="h-3 w-3" />
                     Chat
                   </button>
                 )}

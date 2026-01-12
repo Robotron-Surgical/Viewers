@@ -7,6 +7,7 @@ import { I18nextProvider } from 'react-i18next';
 import { BrowserRouter, type BrowserRouterProps } from 'react-router-dom';
 
 import Compose from './routes/Mode/Compose';
+import { ChatBubbleIcon } from '@radix-ui/react-icons';
 import {
   ExtensionManager,
   CommandsManager,
@@ -167,6 +168,14 @@ function App({
     );
   }
 
+  const chatPanelId = '@semenoflabs/extension-side-chat.panelModule.sideChat';
+  const handleOpenChat = () => {
+    const { panelService } = servicesManager.services;
+    if (panelService) {
+      panelService.activatePanel(chatPanelId, true);
+    }
+  };
+
   return (
     <CombinedProviders>
       <BrowserRouter
@@ -176,6 +185,15 @@ function App({
         {authRoutes}
         {appRoutes}
       </BrowserRouter>
+
+      <button
+        type="button"
+        aria-label="Open chat"
+        onClick={handleOpenChat}
+        className="fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg transition hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300"
+      >
+        <ChatBubbleIcon className="h-5 w-5" />
+      </button>
     </CombinedProviders>
   );
 }
