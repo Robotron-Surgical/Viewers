@@ -195,12 +195,14 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
                     : 'bg-orange-900/50 text-orange-100'
                 }`}
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  className="prose prose-invert prose-xs max-w-none"
-                >
-                  {msg.text}
-                </ReactMarkdown>
+                <div className="max-w-full overflow-x-auto">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="prose prose-invert prose-xs max-w-none whitespace-pre-wrap break-words"
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
               </div>
               <span className="mt-0.5 text-[10px] text-orange-400/70">
                 {msg.role === 'user' ? 'You' : 'Assistant'} • {msg.timestamp.toLocaleTimeString()}

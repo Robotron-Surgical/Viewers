@@ -184,12 +184,14 @@ function SideChatPanel({ servicesManager, commandsManager }) {
                     : 'bg-orange-900/50 text-orange-100'
                 }`}
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  className="prose prose-invert prose-sm max-w-none"
-                >
-                  {msg.text}
-                </ReactMarkdown>
+                <div className="max-w-full overflow-x-auto">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap break-words"
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
               </div>
               <span
                 className={`mt-1 text-xs ${msg.role === 'user' ? 'text-orange-400/70' : 'text-orange-400/70'}`}
