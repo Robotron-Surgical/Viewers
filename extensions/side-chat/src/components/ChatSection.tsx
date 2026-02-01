@@ -39,7 +39,7 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Get the API base URL from environment (same as file upload)
   // @ts-ignore - REACT_APP_CHAT_API_URL is injected at build time
@@ -86,9 +86,11 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
     sessionStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive (scroll within container only)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const addMessage = (text: string, role: 'user' | 'bot') => {
@@ -174,10 +176,10 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
   const isReportReady = !!chatSessionId;
 
   return (
-    <div className="flex flex-col gap-3 p-2">
+    <div className="flex h-[300px] flex-col p-2">
       {/* Status indicator */}
       <div
-        className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${
+        className={`mb-2 flex shrink-0 items-center gap-2 rounded px-2 py-1 text-xs ${
           isReportReady ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
         }`}
       >
@@ -189,8 +191,11 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
         {isReportReady ? 'Report ready - you can chat now' : 'Generate a report to start chatting'}
       </div>
 
-      {/* Messages area */}
-      <div className="bg-background min-h-32 max-h-64 overflow-y-auto rounded border p-2">
+      {/* Messages area - scrollable, takes remaining space */}
+      <div
+        ref={messagesContainerRef}
+        className="ohif-scrollbar bg-background mb-2 min-h-0 flex-1 overflow-y-auto rounded border p-2"
+      >
         <div className="flex flex-col gap-2">
           {/* Initial welcome message */}
           <div className="flex flex-col items-start">
@@ -240,12 +245,11 @@ function ChatSection({ apiEndpoint, disabled = false }: ChatSectionProps) {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input area */}
-      <div className="flex gap-2">
+      {/* Input area - fixed at bottom, always visible */}
+      <div className="flex shrink-0 gap-2">
         <Input
           type="text"
           value={inputValue}
