@@ -95,7 +95,7 @@
   pointer-events: auto;
 }
 
-div[role='dialog'][data-state='open'] {
+div[role='dialog'][data-state='open']:not([data-side]) {
   width: min(1120px, 94vw);
   max-width: 1120px;
   margin: 0 auto;
@@ -107,7 +107,7 @@ div[role='dialog'][data-state='open'] {
 }
 
 @media (max-width: 1280px) {
-  div[role='dialog'][data-state='open'] {
+  div[role='dialog'][data-state='open']:not([data-side]) {
     width: calc(100vw - 24px);
   }
 }
