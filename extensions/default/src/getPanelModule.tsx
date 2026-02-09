@@ -1,5 +1,5 @@
 import React from 'react';
-import { WrappedPanelStudyBrowser } from './Panels';
+import { WrappedPanelStudyBrowser, PanelMedBook } from './Panels';
 import i18n from 'i18next';
 
 // TODO:
@@ -8,7 +8,21 @@ import i18n from 'i18next';
 // - show errors in UI for thumbnails if promise fails
 
 function getPanelModule({ commandsManager, extensionManager, servicesManager }) {
-  return [
+  console.log('[getPanelModule] @ohif/extension-default getPanelModule called');
+
+  const wrappedPanelMedBook = ({ configuration }) => {
+    console.log('[getPanelModule] Rendering PanelMedBook');
+    return (
+      <PanelMedBook
+        commandsManager={commandsManager}
+        servicesManager={servicesManager}
+        extensionManager={extensionManager}
+        configuration={configuration}
+      />
+    );
+  };
+
+  const panels = [
     {
       name: 'seriesList',
       iconName: 'tab-studies',
@@ -23,7 +37,21 @@ function getPanelModule({ commandsManager, extensionManager, servicesManager }) 
         />
       ),
     },
+    {
+      name: 'panelMedBook',
+      iconName: 'tab-call-patient',
+      iconLabel: 'Call patient',
+      label: 'Call patient',
+      iconColor: 'text-[#4DC0C0]',
+      iconActiveColor: 'text-white',
+      iconBgColor: 'bg-[#4DC0C0]/20',
+      iconActiveBgColor: 'bg-[#4DC0C0]',
+      component: wrappedPanelMedBook,
+    },
   ];
+
+  console.log('[getPanelModule] Returning panels:', panels.map(p => p.name));
+  return panels;
 }
 
 export default getPanelModule;

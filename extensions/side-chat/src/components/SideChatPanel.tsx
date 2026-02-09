@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button, Input, ScrollArea, Icons } from '@ohif/ui-next';
+import { Button, Input, Icons } from '@ohif/ui-next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -34,7 +34,7 @@ function SideChatPanel({ servicesManager, commandsManager }) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Get the API base URL from environment (same as file upload)
   // @ts-ignore - REACT_APP_CHAT_API_URL is injected at build time
@@ -75,9 +75,11 @@ function SideChatPanel({ servicesManager, commandsManager }) {
     sessionStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive (scroll within container only)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const addMessage = (text: string, role: 'user' | 'bot') => {
@@ -162,12 +164,12 @@ function SideChatPanel({ servicesManager, commandsManager }) {
   const isReportReady = !!chatSessionId;
 
   return (
-    <div className="flex flex-1 flex-col bg-black p-4">
-      <h2 className="text-foreground mb-4 text-lg font-medium">Chat</h2>
+    <div className="ohif-scrollbar flex h-full flex-col overflow-hidden bg-black p-4">
+      <h2 className="text-foreground mb-4 shrink-0 text-lg font-medium">Chat</h2>
 
       {/* Status indicator */}
       <div
-        className={`mb-3 flex items-center gap-2 rounded px-2 py-1 text-xs ${
+        className={`mb-3 flex shrink-0 items-center gap-2 rounded px-2 py-1 text-xs ${
           isReportReady ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
         }`}
       >
@@ -179,8 +181,11 @@ function SideChatPanel({ servicesManager, commandsManager }) {
         {isReportReady ? 'Report ready - you can chat now' : 'Generate a report to start chatting'}
       </div>
 
-      {/* Messages area */}
-      <ScrollArea className="mb-4 flex-1">
+      {/* Messages area - fills available space with internal scroll */}
+      <div
+        ref={messagesContainerRef}
+        className="ohif-scrollbar mb-4 min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="flex flex-col gap-3 pr-2">
           {/* Welcome message */}
           <div className="flex flex-col items-start">
@@ -231,12 +236,11 @@ function SideChatPanel({ servicesManager, commandsManager }) {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
-      {/* Input area */}
-      <div className="flex gap-2">
+      {/* Input area - always visible at bottom */}
+      <div className="flex shrink-0 gap-2 pb-2">
         <Input
           type="text"
           value={inputValue}
