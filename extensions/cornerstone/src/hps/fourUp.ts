@@ -71,9 +71,9 @@ export const fourUp = {
               id: 'activeDisplaySet',
               options: {
                 displayPreset: {
-                  CT: 'CT-Bone',
-                  MR: 'MR-Default',
-                  default: 'CT-Bone',
+                  CT: 'Segmentation',
+                  MR: 'Segmentation',
+                  default: 'Segmentation',
                 },
               },
             },

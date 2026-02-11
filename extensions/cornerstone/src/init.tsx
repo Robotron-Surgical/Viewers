@@ -5,6 +5,7 @@ import * as cornerstone from '@cornerstonejs/core';
 import * as cornerstoneTools from '@cornerstonejs/tools';
 import {
   init as cs3DInit,
+  CONSTANTS,
   eventTarget,
   EVENTS,
   metaData,
@@ -82,6 +83,22 @@ export default async function init({
   if (maxCacheSize) {
     cornerstone.cache.setMaxCacheSize(maxCacheSize);
   }
+
+  // Register 'Segmentation' preset (same values as CT-Fat) as default for 3D view
+  const SEGMENTATION_PRESET = {
+    name: 'Segmentation',
+    gradientOpacity: '6 0 1 985.12 1 988 1',
+    specularPower: '1',
+    scalarOpacity: '14 -1000 0 -100 0 -99 0.15 -60 0.15 -59 0 101.2 0 952 0',
+    specular: '0',
+    shade: '0',
+    ambient: '0.2',
+    colorTransfer:
+      '36 -1000 0.3 0.3 1 -497.5 0.3 1 0.3 -99 0 0 1 -76.946 0 1 0 -65.481 0.835431 0.888889 0.0165387 83.89 1 0 0 463.28 1 0 0 659.15 1 0.912535 0.0374849 2952 1 0.300267 0.299886',
+    diffuse: '1',
+    interpolation: '1',
+  };
+  CONSTANTS.VIEWPORT_PRESETS.unshift(SEGMENTATION_PRESET);
 
   initCornerstoneTools();
 
