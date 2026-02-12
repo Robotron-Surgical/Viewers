@@ -669,6 +669,11 @@ export function useViewportRendering(
         return null;
       }
 
+      // 3D viewports use volume rendering presets, not colormaps
+      if (viewport instanceof VolumeViewport3D) {
+        return null;
+      }
+
       if (viewport instanceof StackViewport) {
         const { colormap } = viewport.getProperties();
         if (!colormap) {
@@ -681,8 +686,11 @@ export function useViewportRendering(
       }
 
       const actorEntries = viewport.getActors();
-      const actorEntry = actorEntries?.find(entry =>
-        entry.referencedId.includes(activeDisplaySetInstanceUID)
+      const actorEntry = actorEntries?.find(
+        entry =>
+          entry?.referencedId &&
+          typeof entry.referencedId === 'string' &&
+          entry.referencedId.includes(activeDisplaySetInstanceUID)
       );
 
       if (!actorEntry) {
