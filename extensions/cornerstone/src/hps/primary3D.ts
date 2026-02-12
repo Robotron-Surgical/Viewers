@@ -74,6 +74,17 @@ export const primary3D = {
             customViewportProps: {
               hideOverlays: true,
             },
+            syncGroups: [
+              {
+                type: 'hydrateseg',
+                id: 'sameFORId',
+                source: false,
+                target: true,
+                options: {
+                  matchingRules: ['sameFOR'],
+                },
+              },
+            ],
           },
           displaySets: [
             {

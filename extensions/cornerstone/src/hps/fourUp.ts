@@ -64,7 +64,17 @@ export const fourUp = {
             customViewportProps: {
               hideOverlays: true,
             },
-            syncGroups: [HYDRATE_SEG_SYNC_GROUP],
+            syncGroups: [
+              {
+                type: 'hydrateseg',
+                id: 'sameFORId',
+                source: false,
+                target: true,
+                options: {
+                  matchingRules: ['sameFOR'],
+                },
+              },
+            ],
           },
           displaySets: [
             {
