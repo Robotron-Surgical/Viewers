@@ -10,6 +10,8 @@ import MoreDropdownMenu from '../../Components/MoreDropdownMenu';
 import { CallbackCustomization } from 'platform/core/src/types';
 import { BlobReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 import filesToStudies from '../../../../../platform/app/src/routes/Local/filesToStudies.js';
+import { cache, metaData, volumeLoader } from '@cornerstonejs/core';
+import { segmentation as csSegmentation } from '@cornerstonejs/tools';
 const { sortStudyInstances, formatDate, createStudyBrowserTabs } = utils;
 
 const thumbnailNoImageModalities = ['SR', 'RTSTRUCT', 'RTPLAN', 'RTDOSE', 'DOC', 'PMAP'];
@@ -47,6 +49,236 @@ async function retryWithDelay<T>(
   }
 
   throw lastError;
+}
+
+/**
+ * For multi-stack axial series, the labelmap images have non-uniform spacing
+ * (small gaps within disc-level groups, large gaps between groups) and each
+ * stack may have its own oblique tilt (angled to match the disc in spine MRI).
+ *
+ * Cornerstone3D computes volume spacing as (lastPos - firstPos) / (N-1), the
+ * average, which places groups at wrong positions ("stairs" artifact). It also
+ * uses a single direction matrix, so differently-tilted stacks appear with the
+ * wrong orientation.
+ *
+ * This function:
+ * 1. Detects non-uniform spacing or orientation variation across images.
+ * 2. Creates a volume with correct uniform spacing (within-group minimum) and
+ *    empty voxels in gap regions.
+ * 3. For images whose orientation differs from the volume's reference
+ *    orientation, resamples pixel data via an affine transform so that each
+ *    stack appears at its correct physical position and angle.
+ *
+ * Setting volumeId on the Labelmap representation data makes
+ * convertLabelmapToSurface skip its own (broken) volume creation.
+ */
+function ensureUniformVolumeForSurface(segmentationId: string): void {
+  const seg = csSegmentation.state.getSegmentation(segmentationId);
+  if (!seg?.representationData?.Labelmap) {
+    return;
+  }
+
+  const labelmapData = seg.representationData.Labelmap;
+  if (labelmapData.volumeId) {
+    return;
+  }
+
+  const imageIds: string[] = labelmapData.imageIds;
+  if (!imageIds || imageIds.length < 3) {
+    return;
+  }
+
+  const firstMeta = metaData.get('imagePlaneModule', imageIds[0]);
+  if (!firstMeta?.imageOrientationPatient || !firstMeta?.imagePositionPatient) {
+    return;
+  }
+
+  const refIOP = firstMeta.imageOrientationPatient;
+  const rowCos = [refIOP[0], refIOP[1], refIOP[2]];
+  const colCos = [refIOP[3], refIOP[4], refIOP[5]];
+  const scanAxis = [
+    rowCos[1] * colCos[2] - rowCos[2] * colCos[1],
+    rowCos[2] * colCos[0] - rowCos[0] * colCos[2],
+    rowCos[0] * colCos[1] - rowCos[1] * colCos[0],
+  ];
+
+  interface ImageInfo {
+    id: string;
+    pos: number[];
+    proj: number;
+    iop: number[];
+    rowPixelSpacing: number;
+    columnPixelSpacing: number;
+  }
+
+  let hasOrientationVariation = false;
+
+  const imageData: ImageInfo[] = imageIds.map(id => {
+    const meta = metaData.get('imagePlaneModule', id);
+    const pos = meta?.imagePositionPatient || firstMeta.imagePositionPatient;
+    const imgIOP = meta?.imageOrientationPatient || refIOP;
+    const proj =
+      pos[0] * scanAxis[0] + pos[1] * scanAxis[1] + pos[2] * scanAxis[2];
+
+    if (!hasOrientationVariation) {
+      for (let k = 0; k < 6; k++) {
+        if (Math.abs(imgIOP[k] - refIOP[k]) > 0.01) {
+          hasOrientationVariation = true;
+          break;
+        }
+      }
+    }
+
+    return {
+      id,
+      pos: [pos[0], pos[1], pos[2]],
+      proj,
+      iop: imgIOP,
+      rowPixelSpacing: meta?.rowPixelSpacing || firstMeta.rowPixelSpacing || 1,
+      columnPixelSpacing: meta?.columnPixelSpacing || firstMeta.columnPixelSpacing || 1,
+    };
+  });
+
+  const sorted = [...imageData].sort((a, b) => a.proj - b.proj);
+
+  const spacings: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const d = sorted[i].proj - sorted[i - 1].proj;
+    if (d > 0.01) {
+      spacings.push(d);
+    }
+  }
+
+  if (spacings.length < 2) {
+    return;
+  }
+
+  const minSpacing = Math.min(...spacings);
+  const maxSpacing = Math.max(...spacings);
+  const hasNonUniformSpacing = maxSpacing / minSpacing >= 2;
+
+  if (!hasNonUniformSpacing && !hasOrientationVariation) {
+    return;
+  }
+
+  const minProj = sorted[0].proj;
+  const totalExtent = sorted[sorted.length - 1].proj - minProj;
+  const numSlices = Math.round(totalExtent / minSpacing) + 1;
+
+  if (numSlices > 2000) {
+    console.warn(`[3D Fix] Volume too large (${numSlices} slices), skipping`);
+    return;
+  }
+
+  const firstImage = cache.getImage(imageIds[0]);
+  if (!firstImage) {
+    return;
+  }
+
+  const columns = firstImage.columns;
+  const rows = firstImage.rows;
+  const rowSpacing = firstMeta.rowPixelSpacing || 1;
+  const colSpacing = firstMeta.columnPixelSpacing || 1;
+
+  const sliceLength = columns * rows;
+  const scalarData = new Uint8Array(sliceLength * numSlices);
+  const volOrigin = sorted[0].pos.map(Number);
+
+  for (const item of imageData) {
+    const img = cache.getImage(item.id);
+    if (!img) {
+      continue;
+    }
+
+    const pixelData = img.getPixelData();
+    const gridIdx = Math.round((item.proj - minProj) / minSpacing);
+    if (gridIdx < 0 || gridIdx >= numSlices) {
+      continue;
+    }
+
+    const offset = gridIdx * sliceLength;
+
+    let sameOrientation = true;
+    for (let k = 0; k < 6; k++) {
+      if (Math.abs(item.iop[k] - refIOP[k]) > 0.01) {
+        sameOrientation = false;
+        break;
+      }
+    }
+
+    if (sameOrientation && pixelData.length >= sliceLength) {
+      for (let j = 0; j < sliceLength; j++) {
+        scalarData[offset + j] = pixelData[j];
+      }
+      continue;
+    }
+
+    // Affine resample: for each volume voxel in this slice, find the
+    // corresponding pixel in the source image (which has different orientation)
+    const srcRowDir = [item.iop[0], item.iop[1], item.iop[2]];
+    const srcColDir = [item.iop[3], item.iop[4], item.iop[5]];
+    const srcColSp = item.columnPixelSpacing;
+    const srcRowSp = item.rowPixelSpacing;
+    const srcCols = img.columns;
+    const srcRows = img.rows;
+    const srcIPP = item.pos;
+
+    // Pre-compute the slice origin in patient space
+    const sliceOriginX = volOrigin[0] + gridIdx * minSpacing * scanAxis[0];
+    const sliceOriginY = volOrigin[1] + gridIdx * minSpacing * scanAxis[1];
+    const sliceOriginZ = volOrigin[2] + gridIdx * minSpacing * scanAxis[2];
+
+    for (let vy = 0; vy < rows; vy++) {
+      // Row contribution to patient position (constant across vx)
+      const rowContribX = sliceOriginX + vy * rowSpacing * colCos[0];
+      const rowContribY = sliceOriginY + vy * rowSpacing * colCos[1];
+      const rowContribZ = sliceOriginZ + vy * rowSpacing * colCos[2];
+
+      for (let vx = 0; vx < columns; vx++) {
+        // Volume voxel → patient coordinate
+        const patX = rowContribX + vx * colSpacing * rowCos[0];
+        const patY = rowContribY + vx * colSpacing * rowCos[1];
+        const patZ = rowContribZ + vx * colSpacing * rowCos[2];
+
+        // Patient → source image pixel via dot products with source directions
+        const dx = patX - srcIPP[0];
+        const dy = patY - srcIPP[1];
+        const dz = patZ - srcIPP[2];
+
+        const srcCol = (dx * srcRowDir[0] + dy * srcRowDir[1] + dz * srcRowDir[2]) / srcColSp;
+        const srcRow = (dx * srcColDir[0] + dy * srcColDir[1] + dz * srcColDir[2]) / srcRowSp;
+
+        const ic = Math.round(srcCol);
+        const ir = Math.round(srcRow);
+
+        if (ic >= 0 && ic < srcCols && ir >= 0 && ir < srcRows) {
+          const val = pixelData[ic + ir * srcCols];
+          if (val !== 0) {
+            scalarData[offset + vx + vy * columns] = val;
+          }
+        }
+      }
+    }
+  }
+
+  const direction = [...rowCos, ...colCos, ...scanAxis].map(Number);
+  const volumeId = `uniform_seg_${segmentationId}_${Date.now()}`;
+
+  volumeLoader.createLocalVolume(volumeId, {
+    dimensions: [columns, rows, numSlices],
+    spacing: [colSpacing, rowSpacing, minSpacing],
+    origin: volOrigin,
+    direction,
+    scalarData,
+  });
+
+  labelmapData.volumeId = volumeId;
+
+  console.log(
+    `[3D Fix] Created uniform volume: ${numSlices} slices at ` +
+      `${minSpacing.toFixed(2)}mm (was ${imageIds.length} images over ` +
+      `${totalExtent.toFixed(1)}mm, orientationVariation=${hasOrientationVariation})`
+  );
 }
 
 /**
@@ -153,6 +385,7 @@ function PanelStudyBrowser({
       }
 
       try {
+        // TODO(maintainability): Use shared getBackendUrl() / backend API module — see docs/AGENTIC_TASKS.md F1/B4.
         const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
         const response = await fetch(`${backendUrl}/check_segmentation_status/${studyInstanceUID}`);
 
@@ -910,6 +1143,15 @@ function PanelStudyBrowser({
 
         // The segmentation ID is the display set instance UID
         const segmentationId = segDisplaySetInstanceUID;
+
+        // For multi-stack axial series, pre-create a correctly-spaced volume
+        // so that the surface generation preserves anatomical gaps instead of
+        // computing wrong average spacing that produces a "stairs" artifact.
+        try {
+          ensureUniformVolumeForSurface(segmentationId);
+        } catch (err) {
+          console.warn('[3D Fix] Failed to create uniform volume:', err);
+        }
 
         // Add segmentation representation to each viewport directly.
         // addSegmentationRepresentation automatically picks the correct type:

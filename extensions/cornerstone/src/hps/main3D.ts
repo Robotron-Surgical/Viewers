@@ -23,7 +23,7 @@ export const main3D = {
               value: true,
             },
           },
-          required: true,
+          required: false,
         },
       ],
     },

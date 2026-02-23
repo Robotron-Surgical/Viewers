@@ -946,7 +946,8 @@ function commandsModule({
         reportProgress(25, 'Preparing upload...');
 
         // @ts-ignore - BACKEND_API_URL is injected at build time
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://localhost:8000';
+        // TODO(maintainability): Use http (not https) for localhost fallback; prefer shared getBackendUrl() — see docs/AGENTIC_TASKS.md B5/F1.
+        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
         console.log('Backend URL:', backendUrl);
 
         const zipFileName = `dicom_study_${new Date().getTime()}.zip`;

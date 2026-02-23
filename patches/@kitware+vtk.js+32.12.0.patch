@@ -1,0 +1,17 @@
+diff --git a/node_modules/@kitware/vtk.js/Rendering/OpenGL/ImageMapper.js b/node_modules/@kitware/vtk.js/Rendering/OpenGL/ImageMapper.js
+index 68d25e0..5972909 100644
+--- a/node_modules/@kitware/vtk.js/Rendering/OpenGL/ImageMapper.js
++++ b/node_modules/@kitware/vtk.js/Rendering/OpenGL/ImageMapper.js
+@@ -207,10 +207,10 @@ function vtkOpenGLImageMapper(publicAPI, model) {
+                   vec3 tColor = texture2D(colorTexture1, vec2(centerValue * cscale0 + cshift0, 0.5)).rgb;
+                   float scalarOpacity = texture2D(pwfTexture1, vec2(centerValue * pwfscale0 + pwfshift0, 0.5)).r;
+                   float opacityToUse = scalarOpacity * opacity;
+-                  int segmentIndex = int(centerValue * 255.0);
++                  int segmentIndex = int(centerValue * 255.0 + 0.5);
+                   float textureCoordinate = float(segmentIndex - 1) / 1024.0;
+                   float textureValue = texture2D(labelOutlineTexture1, vec2(textureCoordinate, 0.5)).r;
+-                  int actualThickness = int(textureValue * 255.0);
++                  int actualThickness = int(textureValue * 255.0 + 0.5);
+ 
+                   if (segmentIndex == 0){
+                     gl_FragData[0] = vec4(0.0, 0.0, 0.0, 0.0);

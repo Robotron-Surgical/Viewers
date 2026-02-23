@@ -182,7 +182,7 @@ const Thumbnail = ({
                 </button>
               );
             })()}
-            {segDisplaySetInstanceUID && isReconstructable && onView3DClick && StudyInstanceUID && (
+            {segDisplaySetInstanceUID && onView3DClick && StudyInstanceUID && (
               <button
                 onClick={e => {
                   e.stopPropagation();
@@ -294,7 +294,7 @@ const Thumbnail = ({
               </button>
             );
           })()}
-          {segDisplaySetInstanceUID && isReconstructable && onView3DClick && StudyInstanceUID && (
+          {segDisplaySetInstanceUID && onView3DClick && StudyInstanceUID && (
             <button
               onClick={e => {
                 e.stopPropagation();
