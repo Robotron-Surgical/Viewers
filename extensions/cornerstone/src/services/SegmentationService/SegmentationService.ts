@@ -318,6 +318,12 @@ class SegmentationService extends PubSubService {
       ));
     }
 
+    console.log(
+      `[SEG Debug] addSegmentationRepresentation: viewport=${viewportId}, ` +
+      `viewportType=${csViewport.type}, representationType=${representationTypeToUse}, ` +
+      `isConverted=${isConverted}`
+    );
+
     await this._addSegmentationRepresentation(
       viewportId,
       segmentationId,
@@ -326,6 +332,40 @@ class SegmentationService extends PubSubService {
       isConverted,
       config
     );
+
+    // Debug: After adding representation, check what actors were created
+    if (csViewport.type === ViewportType.STACK) {
+      setTimeout(() => {
+        try {
+          const actors = (csViewport as csTypes.IStackViewport).getActors();
+          const segActors = actors.filter(
+            a => a.referencedId && typeof a.referencedId === 'string' && a.referencedId !== (csViewport as csTypes.IStackViewport).getCurrentImageId()
+          );
+          console.log(
+            `[SEG Debug] Stack viewport actors after addRep: total=${actors.length}, ` +
+            `segmentation actors=${segActors.length}`
+          );
+          for (const actor of segActors) {
+            const imgData = actor.actor?.getMapper?.()?.getInputData?.();
+            if (imgData) {
+              const scalars = imgData.getPointData?.()?.getScalars?.()?.getData?.();
+              if (scalars) {
+                const vals = new Set<number>();
+                for (let i = 0; i < scalars.length; i++) {
+                  if (scalars[i] !== 0) vals.add(scalars[i]);
+                }
+                console.log(
+                  `[SEG Debug]   Actor referencedId=${actor.referencedId?.slice(-30)}, ` +
+                  `unique non-zero pixel values: [${Array.from(vals).sort((a, b) => a - b).join(', ')}]`
+                );
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[SEG Debug] Error inspecting actors:', e);
+        }
+      }, 100);
+    }
 
     if (!suppressEvents) {
       this._broadcastEvent(this.EVENTS.SEGMENTATION_REPRESENTATION_MODIFIED, { segmentationId });
@@ -437,6 +477,49 @@ class SegmentationService extends PubSubService {
     }
 
     const imageIds = images.map(image => image.imageId);
+
+    // ===== DIAGNOSTIC LOGGING: Segmentation Data Analysis =====
+    const numGroups = labelMapImages?.length || 0;
+    console.log(
+      `%c[SEG Debug] ===== Segmentation Analysis =====`,
+      'color: red; font-weight: bold; font-size: 14px'
+    );
+    console.log(
+      `[SEG Debug] labelMapImages: ${numGroups} group(s), ` +
+      `overlapping: ${segDisplaySet.overlappingSegments}, ` +
+      `images per group: ${labelMapImages?.map(g => g?.length).join(', ')}, ` +
+      `total reference images: ${imageIds.length}`
+    );
+
+    // Analyze pixel data in EACH group
+    for (let g = 0; g < numGroups; g++) {
+      const group = labelMapImages[g];
+      const groupSegValues = new Set<number>();
+      let nonEmptySlices = 0;
+      for (let s = 0; s < group?.length; s++) {
+        const pixData = group[s]?.voxelManager?.getScalarData();
+        if (pixData) {
+          const sliceVals = new Set<number>();
+          for (let p = 0; p < pixData.length; p++) {
+            if (pixData[p] !== 0) {
+              sliceVals.add(pixData[p]);
+              groupSegValues.add(pixData[p]);
+            }
+          }
+          if (sliceVals.size > 0) {
+            nonEmptySlices++;
+          }
+        }
+      }
+      console.log(
+        `[SEG Debug] Group ${g}: ${group?.length} images, ` +
+        `${nonEmptySlices} non-empty slices, ` +
+        `segment values: [${Array.from(groupSegValues).sort((a, b) => a - b).join(', ')}]`
+      );
+    }
+    console.log(`[SEG Debug] ===== End Analysis =====`);
+    // ===== END DIAGNOSTIC LOGGING =====
+
     const derivedImages = labelMapImages?.flat();
     const derivedImageIds = derivedImages.map(image => image.imageId);
 
@@ -486,7 +569,12 @@ class SegmentationService extends PubSubService {
         rgba,
       } = segmentInfo;
 
-      colorLUT.push(rgba);
+      // Ensure RGBA has 4 components (alpha defaults to 255 if missing).
+      // The dicomlabToRGB conversion only returns [R, G, B] without alpha,
+      // which causes NaN opacity in the VTK piecewise function if rgba[3]
+      // is undefined.
+      const rgbaWithAlpha = rgba?.length === 3 ? [...rgba, 255] : (rgba || [128, 128, 128, 255]);
+      colorLUT.push(rgbaWithAlpha);
 
       const segmentIndex = Number(SegmentNumber);
 
@@ -516,6 +604,19 @@ class SegmentationService extends PubSubService {
         },
       };
     });
+
+    // Debug: Log segment-to-colorLUT mapping
+    console.log('[SEG Debug] colorLUT entries:', colorLUT.length);
+    segmentsInfo.forEach((info, i) => {
+      if (i > 0 && info) {
+        console.log(
+          `[SEG Debug] segmentsInfo[${i}]: SegmentNumber=${info.SegmentNumber}, ` +
+          `Label="${info.SegmentLabel}", colorLUT[${i}]=`,
+          colorLUT[i]
+        );
+      }
+    });
+    console.log('[SEG Debug] segments keys:', Object.keys(segments));
 
     const colorLUTIndex = addColorLUT(colorLUT);
     this._segmentationIdToColorLUTIndexMap.set(segmentationId, colorLUTIndex);

@@ -74,15 +74,26 @@ export const main3D = {
             customViewportProps: {
               hideOverlays: true,
             },
+            syncGroups: [
+              {
+                type: 'hydrateseg',
+                id: 'sameFORId',
+                source: false,
+                target: true,
+                options: {
+                  matchingRules: ['sameFOR'],
+                },
+              },
+            ],
           },
           displaySets: [
             {
               id: 'activeDisplaySet',
               options: {
                 displayPreset: {
-                  CT: 'CT-Bone',
-                  MR: 'MR-Default',
-                  default: 'CT-Bone',
+                  CT: 'Segmentation',
+                  MR: 'Segmentation',
+                  default: 'Segmentation',
                 },
               },
             },

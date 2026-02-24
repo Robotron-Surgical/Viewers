@@ -3,6 +3,7 @@ import { useImageViewer } from '@ohif/ui-next';
 import { useSystem, utils, DicomMetadataStore } from '@ohif/core';
 import { useNavigate } from 'react-router-dom';
 import { useViewportGrid, StudyBrowser, Separator } from '@ohif/ui-next';
+import { useDisplaySetSelectorStore } from '../../stores/useDisplaySetSelectorStore';
 import { PanelStudyBrowserHeader } from './PanelStudyBrowserHeader';
 import { defaultActionIcons } from './constants';
 import MoreDropdownMenu from '../../Components/MoreDropdownMenu';
@@ -857,6 +858,77 @@ function PanelStudyBrowser({
       }
     },
     [onDoubleClickThumbnailHandler, servicesManager, commandsManager, segmentationVisibility]
+  );
+
+  // Handler for 3D view: switch to 3D main layout and load segmentation
+  const handleView3DClick = useCallback(
+    (displaySetInstanceUID: string, segDisplaySetInstanceUID: string, StudyInstanceUID: string) => {
+      if (!displaySetInstanceUID || !segDisplaySetInstanceUID || !StudyInstanceUID) {
+        return;
+      }
+
+      const { viewportGridService, displaySetService, segmentationService } =
+        servicesManager.services;
+      const { setDisplaySetSelector } = useDisplaySetSelectorStore.getState();
+
+      // Set the display set selector so main3D uses this specific series
+      setDisplaySetSelector(`${StudyInstanceUID}:activeDisplaySet:0`, [displaySetInstanceUID]);
+
+      // Switch to 3D main layout
+      commandsManager.run('setHangingProtocol', {
+        protocolId: 'main3D',
+        activeStudyUID: StudyInstanceUID,
+        reset: true,
+      });
+
+      // Load segmentation and add representations to all viewports after layout is applied.
+      // We use segmentationService.addSegmentationRepresentation directly instead of
+      // hydrateSecondaryDisplaySet to avoid going through setDisplaySetsForViewports,
+      // which would trigger a viewport grid state update that resets the 3D viewport.
+      setTimeout(async () => {
+        const gridState = viewportGridService.getState();
+        const allViewportIds = Array.from(gridState.viewports.keys());
+
+        if (allViewportIds.length === 0) {
+          return;
+        }
+
+        const segDisplaySet = displaySetService.getDisplaySetByUID(segDisplaySetInstanceUID);
+        if (!segDisplaySet) {
+          return;
+        }
+
+        // Load the segmentation data if not already loaded
+        if (!segDisplaySet.isLoaded && typeof segDisplaySet.load === 'function') {
+          try {
+            await segDisplaySet.load();
+          } catch (error) {
+            console.warn('Failed to load segmentation display set:', error);
+            return;
+          }
+        }
+
+        // The segmentation ID is the display set instance UID
+        const segmentationId = segDisplaySetInstanceUID;
+
+        // Add segmentation representation to each viewport directly.
+        // addSegmentationRepresentation automatically picks the correct type:
+        // - Surface for volume3d (3D) viewports
+        // - Labelmap for MPR/volume viewports
+        for (const viewportId of allViewportIds) {
+          try {
+            await segmentationService.addSegmentationRepresentation(viewportId, {
+              segmentationId,
+            });
+          } catch (error) {
+            console.warn(`Failed to add segmentation to viewport ${viewportId}:`, error);
+          }
+        }
+
+        setSegmentationVisibility(prev => new Map(prev).set(segDisplaySetInstanceUID, true));
+      }, 800);
+    },
+    [servicesManager, commandsManager]
   );
 
   // Handler for running segmentation on a specific study (per-study button)
@@ -2070,6 +2142,7 @@ function PanelStudyBrowser({
         onClickThumbnail={() => {}}
         onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
         onSegmentationClick={handleSegmentationClick}
+        onView3DClick={handleView3DClick}
         segmentationVisibility={segmentationVisibility}
         onRunSegmentation={handleRunSegmentation}
         onReportClick={handleReportClick}
@@ -2161,6 +2234,7 @@ function _mapDisplaySets(
         },
         isHydratedForDerivedDisplaySet: ds.isHydrated,
         segDisplaySetInstanceUID: segDisplaySetUID || null,
+        isReconstructable: ds.isReconstructable ?? false,
       });
     });
 

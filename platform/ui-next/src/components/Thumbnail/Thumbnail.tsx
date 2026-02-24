@@ -30,10 +30,13 @@ const Thumbnail = ({
   isTracked = false,
   canReject = false,
   segDisplaySetInstanceUID = null,
+  isReconstructable = false,
+  StudyInstanceUID,
   dragData = {},
   onReject = () => {},
   onClickUntrack = () => {},
   onSegmentationClick = null,
+  onView3DClick = null,
   segmentationVisibility = new Map(),
   ThumbnailMenuItems = () => {},
 }: withAppTypes): React.ReactNode => {
@@ -160,24 +163,37 @@ const Thumbnail = ({
               </div>
             </div>
           </div>
-          {segDisplaySetInstanceUID && onSegmentationClick && (() => {
-            const isVisible = segmentationVisibility.get(segDisplaySetInstanceUID) ?? true;
-            return (
+          <div className="mt-1 flex gap-1">
+            {segDisplaySetInstanceUID && onSegmentationClick && (() => {
+              const isVisible = segmentationVisibility.get(segDisplaySetInstanceUID) ?? true;
+              return (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onSegmentationClick(segDisplaySetInstanceUID);
+                  }}
+                  className={`flex-1 rounded py-1 text-[11px] font-semibold ${
+                    isVisible
+                      ? 'bg-primary hover:bg-primary/80 text-white'
+                      : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
+                  }`}
+                >
+                  SEG
+                </button>
+              );
+            })()}
+            {segDisplaySetInstanceUID && isReconstructable && onView3DClick && StudyInstanceUID && (
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  onSegmentationClick(segDisplaySetInstanceUID);
+                  onView3DClick(displaySetInstanceUID, segDisplaySetInstanceUID, StudyInstanceUID);
                 }}
-                className={`mt-1 w-full rounded py-1 text-[11px] font-semibold ${
-                  isVisible
-                    ? 'bg-primary hover:bg-primary/80 text-white'
-                    : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
-                }`}
+                className="bg-secondary hover:bg-secondary/80 flex-1 rounded py-1 text-[11px] font-semibold text-white"
               >
-                SEG
+                3D
               </button>
-            );
-          })()}
+            )}
+          </div>
         </div>
       </div>
     );
@@ -278,6 +294,17 @@ const Thumbnail = ({
               </button>
             );
           })()}
+          {segDisplaySetInstanceUID && isReconstructable && onView3DClick && StudyInstanceUID && (
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                onView3DClick(displaySetInstanceUID, segDisplaySetInstanceUID, StudyInstanceUID);
+              }}
+              className="bg-secondary hover:bg-secondary/80 rounded px-2 py-0.5 text-[11px] font-semibold text-white"
+            >
+              3D
+            </button>
+          )}
           <ThumbnailMenuItems
             displaySetInstanceUID={displaySetInstanceUID}
             canReject={canReject}

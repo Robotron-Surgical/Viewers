@@ -2444,6 +2444,46 @@ function commandsModule({
           displaySetInstanceUIDs: viewport.displaySetInstanceUIDs,
         })),
       });
+
+      // Also add segmentation to any volume3d viewports in the current layout.
+      // getUpdatedViewportsForSegmentation filters out volume3d viewports because
+      // setDisplaySetsForViewports would reset them. Instead, we add segmentation
+      // representations directly (as Surface) to 3D viewports.
+      const gridState = viewportGridService.getState();
+      const allViewports = Array.from(gridState.viewports.values());
+      const volume3dViewports = allViewports.filter(
+        v => v.viewportOptions?.viewportType === 'volume3d'
+      );
+
+      if (volume3dViewports.length > 0) {
+        // Find segmentation display sets that reference the base image display set
+        const baseDisplaySetUID = displaySetInstanceUIDs[0];
+        const allDisplaySets = displaySetService.getActiveDisplaySets();
+        const segDisplaySets = allDisplaySets.filter(
+          ds =>
+            ds.isOverlayDisplaySet && ds.referencedDisplaySetInstanceUID === baseDisplaySetUID
+        );
+
+        // Add each segmentation to each 3D viewport as Surface representation.
+        // addSegmentationRepresentation defaults to Surface for VOLUME_3D viewports.
+        segDisplaySets.forEach(segDS => {
+          const segmentationId = segDS.displaySetInstanceUID;
+          volume3dViewports.forEach(v3d => {
+            const v3dId = v3d.viewportOptions?.viewportId || v3d.viewportId;
+            // Check if this 3D viewport already has this segmentation
+            const existing = segmentationService.getSegmentationRepresentations(v3dId, {
+              segmentationId,
+            });
+            if (!existing || existing.length === 0) {
+              segmentationService
+                .addSegmentationRepresentation(v3dId, { segmentationId })
+                .catch(err =>
+                  console.warn(`Failed to add segmentation to 3D viewport ${v3dId}:`, err)
+                );
+            }
+          });
+        });
+      }
     },
     setViewportOrientation: ({ viewportId, orientation }) => {
       const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);

@@ -65,20 +65,27 @@ const segmentationRepresentationModifiedCallback = async (
     return;
   }
 
-  // whatever type the source viewport has, we need to add that to the target viewport
-  const sourceViewportRepresentation = segmentationService.getSegmentationRepresentations(
-    sourceViewport.viewportId,
-    { segmentationId }
-  );
+  // For 3D viewports, don't pass an explicit type so addSegmentationRepresentation
+  // defaults to Surface. For other viewports, copy the type from the source viewport.
+  if (viewport.type === CoreEnums.ViewportType.VOLUME_3D) {
+    await segmentationService.addSegmentationRepresentation(targetViewportId, {
+      segmentationId,
+    });
+  } else {
+    const sourceViewportRepresentation = segmentationService.getSegmentationRepresentations(
+      sourceViewport.viewportId,
+      { segmentationId }
+    );
 
-  const type = sourceViewportRepresentation[0].type;
+    const type = sourceViewportRepresentation[0].type;
 
-  await segmentationService.addSegmentationRepresentation(targetViewportId, {
-    segmentationId,
-    type,
-    config: {
-      blendMode:
-        viewport.getBlendMode() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
-    },
-  });
+    await segmentationService.addSegmentationRepresentation(targetViewportId, {
+      segmentationId,
+      type,
+      config: {
+        blendMode:
+          viewport.getBlendMode() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
+      },
+    });
+  }
 };

@@ -969,7 +969,9 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
         properties.colormap = colormap;
       }
 
-      if (displayPreset !== undefined) {
+      if (viewport.type === csEnums.ViewportType.VOLUME_3D) {
+        properties.preset = 'Segmentation';
+      } else if (displayPreset !== undefined) {
         properties.preset = displayPreset[displaySetModality] || displayPreset.default;
       }
 
@@ -1008,6 +1010,16 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       });
     }
     viewport.render();
+
+    // For 3D viewports, set preset immediately so Segmentation appears from the first frame
+    if (viewport.type === csEnums.ViewportType.VOLUME_3D) {
+      volumesProperties.forEach(({ properties, volumeId }) => {
+        if (properties.preset) {
+          viewport.setProperties({ preset: properties.preset }, volumeId);
+        }
+      });
+      viewport.render();
+    }
 
     volumesProperties.forEach(({ properties, volumeId }) => {
       setTimeout(() => {
@@ -1078,15 +1090,24 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     const { segmentationService } = this.servicesManager.services;
     const segmentationId = displaySet.displaySetInstanceUID;
 
-    const representationType =
-      displaySet.Modality === 'SEG'
-        ? csToolsEnums.SegmentationRepresentations.Labelmap
-        : csToolsEnums.SegmentationRepresentations.Contour;
+    // For 3D viewports, don't pass an explicit type so that
+    // addSegmentationRepresentation defaults to Surface (which is correct for 3D).
+    // For other viewports, use Labelmap for SEG and Contour for RTSTRUCT.
+    if (viewport.type === csEnums.ViewportType.VOLUME_3D) {
+      segmentationService.addSegmentationRepresentation(viewport.id, {
+        segmentationId,
+      });
+    } else {
+      const representationType =
+        displaySet.Modality === 'SEG'
+          ? csToolsEnums.SegmentationRepresentations.Labelmap
+          : csToolsEnums.SegmentationRepresentations.Contour;
 
-    segmentationService.addSegmentationRepresentation(viewport.id, {
-      segmentationId,
-      type: representationType,
-    });
+      segmentationService.addSegmentationRepresentation(viewport.id, {
+        segmentationId,
+        type: representationType,
+      });
+    }
 
     // store the segmentation presentation id in the viewport info
     this.storePresentation({ viewportId: viewport.id });
