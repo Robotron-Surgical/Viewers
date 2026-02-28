@@ -10,6 +10,8 @@ import MoreDropdownMenu from '../../Components/MoreDropdownMenu';
 import { CallbackCustomization } from 'platform/core/src/types';
 import { BlobReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 import filesToStudies from '../../../../../platform/app/src/routes/Local/filesToStudies.js';
+import { type TabsProps } from '@ohif/core/src/utils/createStudyBrowserTabs';
+
 const { sortStudyInstances, formatDate, createStudyBrowserTabs } = utils;
 
 const thumbnailNoImageModalities = ['SR', 'RTSTRUCT', 'RTPLAN', 'RTDOSE', 'DOC', 'PMAP'];
@@ -64,7 +66,8 @@ function PanelStudyBrowser({
   const { servicesManager, commandsManager, extensionManager } = useSystem();
   const { displaySetService, customizationService } = servicesManager.services;
   const navigate = useNavigate();
-  const studyMode = customizationService.getCustomization('studyBrowser.studyMode') || 'all';
+  const studyMode =
+    (customizationService.getCustomization('studyBrowser.studyMode') as string) || 'all';
 
   const internalImageViewer = useImageViewer();
   const StudyInstanceUIDs = internalImageViewer?.StudyInstanceUIDs || [];
@@ -1781,11 +1784,6 @@ function PanelStudyBrowser({
         studyInstanceUid: StudyInstanceUID,
       });
 
-      if (!qidoForStudyUID?.length) {
-        navigate('/notfoundstudy', '_self');
-        throw new Error('Invalid study URL');
-      }
-
       let qidoStudiesForPatient = qidoForStudyUID;
 
       // try to fetch the prior studies based on the patientID if the
@@ -2044,8 +2042,12 @@ function PanelStudyBrowser({
     }
 
     const displaySetInstanceUID = jumpToDisplaySet;
-    // Set the activeTabName and expand the study
-    const thumbnailLocation = _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs);
+    // It is possible to navigate to a study not currently in view
+    const thumbnailLocation = _findTabAndStudyOfDisplaySet(
+      displaySetInstanceUID,
+      tabs,
+      activeTabName
+    );
     if (!thumbnailLocation) {
       return;
     }
@@ -2071,7 +2073,7 @@ function PanelStudyBrowser({
         />
         <Separator
           orientation="horizontal"
-          className="bg-black"
+          className="bg-background"
           thickness="2px"
         />
         <div className="flex flex-col gap-2 p-2">
@@ -2221,7 +2223,7 @@ function _mapDisplaySets(
         seriesInstanceUID: ds.SeriesInstanceUID,
         modality: ds.Modality,
         seriesDate: formatDate(ds.SeriesDate),
-        numInstances: ds.numImageFrames,
+        numInstances: ds.numImageFrames ?? ds.instances?.length,
         loadingProgress,
         countIcon: ds.countIcon,
         messages: ds.messages,
@@ -2266,23 +2268,23 @@ function getImageIdForThumbnail(displaySet, imageIds) {
   return imageId;
 }
 
-function _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs) {
-  for (let t = 0; t < tabs.length; t++) {
-    const { studies } = tabs[t];
+function _findTabAndStudyOfDisplaySet(
+  displaySetInstanceUID: string,
+  tabs: TabsProps,
+  currentTabName: string
+) {
+  const current = tabs.find(tab => tab.name === currentTabName) || tabs[0];
+  const biasedTabs = [current, ...tabs];
 
-    for (let s = 0; s < studies.length; s++) {
-      const { displaySets } = studies[s];
-
-      for (let d = 0; d < displaySets.length; d++) {
-        const displaySet = displaySets[d];
-
-        if (displaySet.displaySetInstanceUID === displaySetInstanceUID) {
-          return {
-            tabName: tabs[t].name,
-            StudyInstanceUID: studies[s].studyInstanceUid,
-          };
-        }
-      }
+  for (let t = 0; t < biasedTabs.length; t++) {
+    const study = biasedTabs[t].studies.find(study =>
+      study.displaySets.find(ds => ds.displaySetInstanceUID === displaySetInstanceUID)
+    );
+    if (study) {
+      return {
+        tabName: biasedTabs[t].name,
+        StudyInstanceUID: study.studyInstanceUid,
+      };
     }
   }
 }

@@ -2,6 +2,7 @@ import dcmjs from 'dcmjs';
 
 import pubSubServiceInterface from '../_shared/pubSubServiceInterface';
 import createStudyMetadata from './createStudyMetadata';
+import addProxyFields from '../../utils/addProxyFields';
 
 const EVENTS = {
   STUDY_ADDED: 'event::dicomMetadataStore:studyAdded',
@@ -52,6 +53,12 @@ const _model = {
 // Track series with parsing errors (e.g., invalid VR types)
 const _problematicSeries = new Set<string>();
 
+let metaDataProvider;
+
+function _setMetaDataProvider(metaData) {
+  metaDataProvider = metaData;
+}
+
 function _getStudyInstanceUIDs() {
   return _model.studies.map(aStudy => aStudy.StudyInstanceUID);
 }
@@ -73,7 +80,7 @@ function _getStudy(StudyInstanceUID) {
  * @returns {*} A series object
  */
 function _getSeries(StudyInstanceUID, SeriesInstanceUID) {
-  if(!StudyInstanceUID) {
+  if (!StudyInstanceUID) {
     const series = _model.studies.map(study => study.series).flat();
     return series.find(aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID);
   }
@@ -104,7 +111,17 @@ function _getInstance(StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID) {
   return series.getInstance(SOPInstanceUID);
 }
 
+/**
+ * Gets the frame module from the OHIF metadata provider, and then
+ * uses the study/series/instance uids to get the instance data.
+ */
 function _getInstanceByImageId(imageId) {
+  const metadataResult = metaDataProvider?.get('frameModule', imageId);
+  if (metadataResult) {
+    const { studyInstanceUID, seriesInstanceUID, sopInstanceUID } = metadataResult;
+    return _getInstance(studyInstanceUID, seriesInstanceUID, sopInstanceUID);
+  }
+  console.warn('No metadata result found for', imageId, 'looking through instances');
   for (const study of _model.studies) {
     for (const series of study.series) {
       for (const instance of series.instances) {
@@ -226,10 +243,20 @@ const BaseImplementation = {
       study = _model.studies[_model.studies.length - 1];
     }
 
+    naturalizedDataset =
+      numberOfFrames > 1 ? addProxyFields(naturalizedDataset) : naturalizedDataset;
+
     study.addInstanceToSeries(naturalizedDataset);
   },
   addInstances(instances, madeInClient = false) {
-    const { StudyInstanceUID, SeriesInstanceUID } = instances[0];
+    const { StudyInstanceUID, SeriesInstanceUID, NumberOfFrames } = instances[0];
+    // For multiframe images (NumberOfFrames > 1), wrap each instance with a metadata proxy
+    // to enable fallback access for key image plane fields. This allows fields like
+    // ImagePositionPatient, ImageOrientationPatient, and PixelSpacing to be transparently
+    // resolved from parent or shared metadata if they are not directly present on the instance directly
+    if (NumberOfFrames > 1) {
+      instances = instances.map(instance => addProxyFields(instance));
+    }
 
     let study = _model.studies.find(study => study.StudyInstanceUID === StudyInstanceUID);
 
@@ -323,6 +350,7 @@ const BaseImplementation = {
   isSeriesProblematic(SeriesInstanceUID: string): boolean {
     return _problematicSeries.has(SeriesInstanceUID);
   },
+  setMetaDataProvider: _setMetaDataProvider,
 };
 const DicomMetadataStore = Object.assign(
   // get study

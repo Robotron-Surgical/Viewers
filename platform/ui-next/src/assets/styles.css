@@ -26,10 +26,13 @@
 
 .ohif-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 0.25rem;
+  @apply rounded; 
+  @apply bg-popover;
   background-color: #041c4a;
 }
 
 .ohif-scrollbar::-webkit-scrollbar-thumb:window-inactive {
+  @apply bg-popover;
   background-color: #041c4a;
 }
 .drag-handle {

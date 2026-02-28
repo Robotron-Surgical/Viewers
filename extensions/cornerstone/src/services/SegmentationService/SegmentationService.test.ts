@@ -221,7 +221,7 @@ describe('SegmentationService', () => {
     it('should add event listeners', () => {
       service.onModeEnter();
 
-      expect(eventTarget.addEventListener).toHaveBeenCalledTimes(7);
+      expect(eventTarget.addEventListener).toHaveBeenCalledTimes(8);
 
       expect(eventTarget.addEventListener).toHaveBeenCalledWith(
         csToolsEnums.Events.SEGMENTATION_MODIFIED,
@@ -249,6 +249,10 @@ describe('SegmentationService', () => {
       );
       expect(eventTarget.addEventListener).toHaveBeenCalledWith(
         csToolsEnums.Events.SEGMENTATION_ADDED,
+        expect.any(Function)
+      );
+      expect(eventTarget.addEventListener).toHaveBeenCalledWith(
+        csToolsEnums.Events.ANNOTATION_CUT_MERGE_PROCESS_COMPLETED,
         expect.any(Function)
       );
     });
@@ -1950,7 +1954,8 @@ describe('SegmentationService', () => {
           type,
           segmentIndex,
         },
-        style
+        style,
+        true
       );
     });
   });
@@ -1999,7 +2004,7 @@ describe('SegmentationService', () => {
 
       service.addSegment(segmentationId, config);
 
-      expect(cstSegmentation.state.getSegmentation).toHaveBeenCalledTimes(1);
+      expect(cstSegmentation.state.getSegmentation).toHaveBeenCalledTimes(2);
       expect(cstSegmentation.state.getSegmentation).toHaveBeenCalledWith(segmentationId);
 
       expect(cstSegmentation.updateSegmentations).toHaveBeenCalledTimes(1);
@@ -2112,7 +2117,9 @@ describe('SegmentationService', () => {
       service.removeSegment(segmentationId, segmentIndex);
 
       expect(cstSegmentation.removeSegment).toHaveBeenCalledTimes(1);
-      expect(cstSegmentation.removeSegment).toHaveBeenCalledWith(segmentationId, segmentIndex);
+      expect(cstSegmentation.removeSegment).toHaveBeenCalledWith(segmentationId, segmentIndex, {
+        recordHistory: true,
+      });
     });
   });
 
@@ -2482,7 +2489,7 @@ describe('SegmentationService', () => {
         type: representations[0].type,
       });
 
-      expect(service.getSegmentationRepresentations).toHaveBeenCalledTimes(2);
+      expect(service.getSegmentationRepresentations).toHaveBeenCalledTimes(1);
       expect(service.getSegmentationRepresentations).toHaveBeenCalledWith(viewportId, {
         segmentationId: representations[0].segmentationId,
         type: representations[0].type,
@@ -2511,20 +2518,20 @@ describe('SegmentationService', () => {
         false
       );
     });
+  });
 
+  describe('setSegmentationRepresentationVisibility', () => {
     it('should early return if the representation is not found', () => {
-      jest.spyOn(service, 'getSegmentationRepresentations').mockReturnValueOnce(representations);
-      jest.spyOn(cstSegmentation.state, 'getSegmentationRepresentations').mockReturnValueOnce([]);
-      jest
-        .spyOn(cstSegmentation.config.visibility, 'getHiddenSegmentIndices')
-        .mockReturnValue(new Set());
+      jest.spyOn(service, 'getSegmentationRepresentations').mockReturnValueOnce([]);
       jest.spyOn(console, 'debug').mockReturnValue(undefined);
       jest.spyOn(cstSegmentation.config.visibility, 'setSegmentationRepresentationVisibility');
 
-      service.toggleSegmentationRepresentationVisibility(viewportId, {
-        segmentationId: representations[0].segmentationId,
-        type: representations[0].type,
-      });
+      service['_setSegmentationRepresentationVisibility'](
+        viewportId,
+        representations[0].segmentationId,
+        representations[0].type,
+        true
+      );
 
       expect(console.debug).toHaveBeenCalledTimes(1);
       expect(console.debug).toHaveBeenCalledWith(
@@ -2560,12 +2567,12 @@ describe('SegmentationService', () => {
   describe('clearSegmentationRepresentations', () => {
     it('should clear the segmentation representations', () => {
       const viewportId = 'viewportId';
-      jest.spyOn(service, 'removeSegmentationRepresentations').mockReturnValue(undefined);
+      jest.spyOn(service, 'removeRepresentationsFromViewport').mockReturnValue(undefined);
 
       service.clearSegmentationRepresentations(viewportId);
 
-      expect(service.removeSegmentationRepresentations).toHaveBeenCalledTimes(1);
-      expect(service.removeSegmentationRepresentations).toHaveBeenCalledWith(viewportId);
+      expect(service.removeRepresentationsFromViewport).toHaveBeenCalledTimes(1);
+      expect(service.removeRepresentationsFromViewport).toHaveBeenCalledWith(viewportId);
     });
   });
 
@@ -2593,7 +2600,7 @@ describe('SegmentationService', () => {
     });
   });
 
-  describe('removeSegmentationRepresentations', () => {
+  describe('removeRepresentationsFromViewport', () => {
     it('should remove the segmentation representations', () => {
       const viewportId = 'viewportId';
       const specifier = {
@@ -2602,7 +2609,7 @@ describe('SegmentationService', () => {
       };
       jest.spyOn(cstSegmentation, 'removeSegmentationRepresentations').mockReturnValue(undefined);
 
-      service.removeSegmentationRepresentations(viewportId, specifier);
+      service.removeRepresentationsFromViewport(viewportId, specifier);
 
       expect(cstSegmentation.removeSegmentationRepresentations).toHaveBeenCalledTimes(1);
       expect(cstSegmentation.removeSegmentationRepresentations).toHaveBeenCalledWith(
@@ -2825,7 +2832,8 @@ describe('SegmentationService', () => {
             segmentIndex,
             type: csToolsEnums.SegmentationRepresentations.Labelmap,
           },
-          {}
+          {},
+          false
         );
 
         expect(window.requestAnimationFrame).not.toHaveBeenCalledTimes(3);
