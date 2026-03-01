@@ -220,7 +220,8 @@ const BaseImplementation = {
       naturalizedDataset = dicomJSONDataset;
     }
 
-    const { StudyInstanceUID, SeriesInstanceUID } = naturalizedDataset;
+    const { StudyInstanceUID, SeriesInstanceUID, NumberOfFrames: numberOfFrames } =
+      naturalizedDataset;
     seriesInstanceUID = SeriesInstanceUID;
 
     // Mark series as problematic if invalid VR type was detected during parsing

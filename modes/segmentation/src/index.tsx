@@ -8,12 +8,15 @@ const ohif = {
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
   hangingProtocol: '@ohif/extension-default.hangingProtocolModule.default',
   leftPanel: '@ohif/extension-default.panelModule.seriesList',
+  thumbnailList: '@ohif/extension-default.panelModule.seriesList',
 };
 
 const cornerstone = {
   viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
-  panelTool: '@ohif/extension-cornerstone.panelModule.panelSegmentationWithTools',
   measurements: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
+  labelMapSegmentationPanel:
+    '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsLabelMap',
+  // contourSegmentationPanel disabled
 };
 
 const sideChat = {
@@ -44,8 +47,9 @@ const extensionDependencies = {
   '@ohif/extension-cornerstone-dicom-rt': '^3.0.0',
   '@semenoflabs/extension-side-chat': '^1.0.0',
 };
+
 import setUpAutoTabSwitchHandler from './utils/setUpAutoTabSwitchHandler';
-import { ohif, cornerstone, extensionDependencies, dicomRT, segmentation } from '@ohif/mode-basic';
+
 export * from './toolbarButtons';
 
 function modeFactory({ modeConfiguration }) {
@@ -251,10 +255,10 @@ function modeFactory({ modeConfiguration }) {
             props: {
               leftPanels: [ohif.thumbnailList],
               leftPanelResizable: true,
-              rightPanels: [cornerstone.panelTool, sideChat.chat, defaultExtension.medBook],
               rightPanels: [
                 cornerstone.labelMapSegmentationPanel,
-                cornerstone.contourSegmentationPanel,
+                sideChat.chat,
+                defaultExtension.medBook,
               ],
               rightPanelResizable: true,
               // leftPanelClosed: true,

@@ -10,6 +10,15 @@ import validate from './lib/validator';
  * @return {Object}      Matching Object with score and details (which rule passed or failed)
  */
 const match = (metadataInstance, rules = [], customAttributeRetrievalCallbacks, options) => {
+  // Guard: local/dropped loads or slow store can pass undefined study metadata
+  if (metadataInstance == null) {
+    return {
+      score: 0,
+      details: { passed: [], failed: [] },
+      requiredFailed: true,
+    };
+  }
+
   const validateOptions = {
     format: 'grouped',
   };

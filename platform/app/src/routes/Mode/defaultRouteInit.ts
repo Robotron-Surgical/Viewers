@@ -41,8 +41,9 @@ export async function defaultRouteInit(
     }
     const sortedDisplaySets = [...displaySets].sort(sortCriteria);
 
-    // Gets the studies list to use
-    const studies = getStudies(studyInstanceUIDs, sortedDisplaySets);
+    // Gets the studies list to use (filter out undefined when store not ready yet, e.g. local load)
+    const rawStudies = getStudies(studyInstanceUIDs, sortedDisplaySets);
+    const studies = Array.isArray(rawStudies) ? rawStudies.filter(Boolean) : [];
 
     // study being displayed, and is thus the "active" study.
     const activeStudy = studies[0];

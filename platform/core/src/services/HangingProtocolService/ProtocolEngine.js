@@ -56,6 +56,17 @@ export default class ProtocolEngine {
     // Clear all data currently in matchedProtocols
     this._clearMatchedProtocols();
 
+    // When loading from local/dropped files, activeStudy can be undefined (store not ready yet)
+    if (this.study == null) {
+      const protocol =
+        this.protocols.find(p => p.id === 'default') ?? this.protocols[0];
+      if (protocol) {
+        this.matchedProtocols.set(protocol.id, protocol);
+        this.matchedProtocolScores[protocol.id] = 0;
+      }
+      return;
+    }
+
     // TODO: handle more than one study - this.studies has the list of studies
     const matched = this.findMatchByStudy(this.study, {
       studies: this.studies,

@@ -33,20 +33,13 @@ export default function setUpAutoTabSwitchHandler({
         if (activeRepresentation && shouldSwitchTab) {
           shouldSwitchTab = false;
 
-          switch (activeRepresentation.type) {
-            case 'Labelmap':
-              panelService.activatePanel(
-                '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsLabelMap',
-                true
-              );
-              break;
-            case 'Contour':
-              panelService.activatePanel(
-                '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsContour',
-                true
-              );
-              break;
+          if (activeRepresentation.type === 'Labelmap') {
+            panelService.activatePanel(
+              '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsLabelMap',
+              true
+            );
           }
+          // Contour panel is disabled; no auto-switch for Contour type
         }
       })
     )

@@ -147,7 +147,6 @@ const CornerstoneViewportDownloadForm = ({
       downloadViewport.render();
 
       if (segmentationRepresentations?.length) {
-      if (segmentationRepresentations && segmentationRepresentations.length > 0) {
         segmentationRepresentations.forEach(segRepresentation => {
           const { segmentationId, colorLUTIndex, type } = segRepresentation;
           if (type === Enums.SegmentationRepresentations.Labelmap) {

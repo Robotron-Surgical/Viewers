@@ -104,7 +104,7 @@ const Home = () => {
         const studies = await filesToStudies(filteredFiles);
 
         if (!studies?.length) {
-          setErrorMessage('Nie udało się wczytać plików DICOM.');
+          setErrorMessage('No DICOM studies found.');
           setIsProcessing(false);
           return;
         }
@@ -115,7 +115,7 @@ const Home = () => {
         setIsProcessing(false);
       } catch (error) {
         console.error('Failed to process dropped DICOM files', error);
-        setErrorMessage('Wystąpił problem podczas przetwarzania plików.');
+        setErrorMessage('Failed to process dropped DICOM files.');
         setIsProcessing(false);
       }
     },
