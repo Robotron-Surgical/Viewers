@@ -896,9 +896,18 @@ function commandsModule({
                 const file = fileManager.get(fileIndex);
 
                 if (file) {
+                  // Use webkitRelativePath when available (folder selection) to preserve
+                  // folder structure and avoid overwriting files from different folders
                   const fileName =
-                    (file instanceof File ? file.name : null) ||
-                    `instance_${fileCount.toString().padStart(5, '0')}.dcm`;
+                    (file instanceof File &&
+                    'webkitRelativePath' in file &&
+                    (file as File & { webkitRelativePath?: string }).webkitRelativePath)
+                      ? (file as File & { webkitRelativePath: string }).webkitRelativePath.replace(
+                          /\\/g,
+                          '/'
+                        )
+                      : (file instanceof File ? file.name : null) ||
+                        `instance_${fileCount.toString().padStart(5, '0')}.dcm`;
 
                   await zipWriter.add(fileName, new BlobReader(file));
                   fileCount++;
@@ -1009,9 +1018,18 @@ function commandsModule({
                 const file = fileManager.get(fileIndex);
 
                 if (file) {
+                  // Use webkitRelativePath when available (folder selection) to preserve
+                  // folder structure and avoid overwriting files from different folders
                   const fileName =
-                    (file instanceof File ? file.name : null) ||
-                    `instance_${fileCount.toString().padStart(5, '0')}.dcm`;
+                    (file instanceof File &&
+                    'webkitRelativePath' in file &&
+                    (file as File & { webkitRelativePath?: string }).webkitRelativePath)
+                      ? (file as File & { webkitRelativePath: string }).webkitRelativePath.replace(
+                          /\\/g,
+                          '/'
+                        )
+                      : (file instanceof File ? file.name : null) ||
+                        `instance_${fileCount.toString().padStart(5, '0')}.dcm`;
 
                   await zipWriter.add(fileName, new BlobReader(file));
                   fileCount++;
