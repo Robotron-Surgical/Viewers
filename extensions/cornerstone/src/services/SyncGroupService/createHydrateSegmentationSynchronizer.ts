@@ -39,8 +39,12 @@ export default function createHydrateSegmentationSynchronizer(
 /**
  * This method will add the segmentation representation to any target viewports having:
  *
- * 1. the same FrameOfReferenceUID (FOR) as the segmentation representation, or
+ * 1. a display set that matches the segmentation's referenced series, OR
  * 2. a shared DisplaySet with the source viewport when no FOR is present.
+ *
+ * This ensures a sagittal SEG only propagates to viewports showing the sagittal
+ * source series (e.g. MPR views of that series), never to an unrelated axial
+ * series that happens to share the same Frame of Reference.
  */
 const segmentationRepresentationModifiedCallback = async (
   synchronizerInstance: Synchronizer,
@@ -52,7 +56,8 @@ const segmentationRepresentationModifiedCallback = async (
   const event = sourceEvent as ToolsTypes.EventTypes.SegmentationRepresentationModifiedEventType;
 
   const { segmentationId, type: segmentationRepresentationType } = event.detail;
-  const { segmentationService, cornerstoneViewportService } = servicesManager.services;
+  const { segmentationService, cornerstoneViewportService, displaySetService } =
+    servicesManager.services;
 
   const targetViewportId = targetViewport.viewportId;
   const sourceViewportId = sourceViewport.viewportId;
@@ -63,6 +68,19 @@ const segmentationRepresentationModifiedCallback = async (
 
   const sourceDisplaySetUIDs = extractDisplaySetUIDs(sourceViewportInfo);
   const targetDisplaySetUIDs = extractDisplaySetUIDs(targetViewportInfo);
+
+  // Only propagate to viewports that already show the segmentation's referenced
+  // source series. This prevents cross-series bleed (e.g. sagittal SEG → axial
+  // viewport) when both series share the same FrameOfReferenceUID.
+  const allDisplaySets = displaySetService.getActiveDisplaySets?.() ?? [];
+  const segDisplaySet = allDisplaySets.find(
+    (ds: AppTypes.DisplaySet) => ds.displaySetInstanceUID === segmentationId
+  );
+  const referencedUID = segDisplaySet?.referencedDisplaySetInstanceUID;
+
+  if (referencedUID && !targetDisplaySetUIDs.includes(referencedUID)) {
+    return;
+  }
 
   const sharedDisplaySetExists = isAnyDisplaySetCommon(sourceDisplaySetUIDs, targetDisplaySetUIDs);
 
@@ -79,14 +97,6 @@ const segmentationRepresentationModifiedCallback = async (
     return;
   }
 
-  // Ensure the segmentation representation aligns with the target viewport type.
-  const type: Enums.SegmentationRepresentations =
-    viewport.type === CoreEnums.ViewportType.VOLUME_3D
-      ? Enums.SegmentationRepresentations.Surface
-      : ((segmentationRepresentationType as Enums.SegmentationRepresentations) ??
-        Enums.SegmentationRepresentations.Labelmap);
-  // For 3D viewports, don't pass an explicit type so addSegmentationRepresentation
-  // defaults to Surface. For other viewports, copy the type from the source viewport.
   if (viewport.type === CoreEnums.ViewportType.VOLUME_3D) {
     await segmentationService.addSegmentationRepresentation(targetViewportId, {
       segmentationId,
@@ -99,20 +109,12 @@ const segmentationRepresentationModifiedCallback = async (
 
     const type = sourceViewportRepresentation[0].type;
 
-  await segmentationService.addSegmentationRepresentation(targetViewportId, {
-    segmentationId,
-    type,
-    config: {
-      blendMode:
-        viewport?.getBlendMode?.() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
-    },
-  });
     await segmentationService.addSegmentationRepresentation(targetViewportId, {
       segmentationId,
       type,
       config: {
         blendMode:
-          viewport.getBlendMode() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
+          viewport?.getBlendMode?.() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
       },
     });
   }
@@ -121,6 +123,10 @@ const segmentationRepresentationModifiedCallback = async (
 /**
  * Extracts the displaySetInstanceUIDs from a viewportInfo.
  */
-function extractDisplaySetUIDs(viewportInfo) {
-  return viewportInfo.getViewportData().data.map(ds => ds.displaySetInstanceUID);
+function extractDisplaySetUIDs(viewportInfo): string[] {
+  try {
+    return viewportInfo.getViewportData().data.map((ds: { displaySetInstanceUID: string }) => ds.displaySetInstanceUID);
+  } catch {
+    return [];
+  }
 }
