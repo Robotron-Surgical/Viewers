@@ -389,20 +389,22 @@ function PanelStudyBrowser({
             setSegmentationStage('Segmentation ready');
             setSegmentationProgress(100);
 
-            // Automatically load SEG display sets — one per viewport, matched by
-            // referenced series first, then by orientation keyword.
-            setTimeout(async () => {
+            // Automatically load SEG display sets into viewports.
+            // We bypass hydrateSecondaryDisplaySet because it checks for
+            // cornerstoneViewport existence, which can be temporarily null
+            // when a prior viewport update triggers a React re-render.
+            // Instead we: (1) store segmentation presentations in Zustand,
+            // (2) batch all viewport display-set changes into one call.
+            setTimeout(() => {
               const { viewportGridService } = servicesManager.services;
               const gridState = viewportGridService.getState();
-
               const allViewports = Array.from(gridState.viewports.values());
 
               if (allViewports.length === 0) {
-                console.warn('No viewports available for segmentation loading');
+                console.warn('[SEG-AutoLoad] No viewports available');
                 return;
               }
 
-              // Find newly created SEG display sets
               const currentDisplaySets = displaySetService.activeDisplaySets;
               const segDisplaySets = currentDisplaySets.filter(
                 ds =>
@@ -410,30 +412,46 @@ function PanelStudyBrowser({
                   !existingSeriesMap.has(`${ds.StudyInstanceUID}_${ds.SeriesInstanceUID}`)
               );
 
-              console.log(`Found ${segDisplaySets.length} new segmentation(s) to load`);
+              console.log(`[SEG-AutoLoad] Found ${segDisplaySets.length} new SEG display set(s)`);
+              if (segDisplaySets.length === 0) {
+                return;
+              }
 
-              // Infer orientation keyword from SeriesDescription
-              const getSegOrientation = (ds): string | null => {
+              const getOrientation = (ds): string | null => {
                 const desc = (ds.SeriesDescription || '').toLowerCase();
-                if (desc.includes('sagittal')) {
+                if (desc.includes('sagittal') || desc.includes('sag')) {
                   return 'sagittal';
                 }
-                if (desc.includes('axial')) {
+                if (desc.includes('axial') || desc.includes('ax')) {
                   return 'axial';
                 }
-                if (desc.includes('coronal')) {
+                if (desc.includes('coronal') || desc.includes('cor')) {
                   return 'coronal';
                 }
                 return null;
               };
 
-              // Track which viewports already received a segmentation this pass
+              // Sort: axial → viewport 0, sagittal → viewport 1
+              const orientationOrder = { axial: 0, sagittal: 1, coronal: 2 };
+              segDisplaySets.sort((a, b) => {
+                const oA = getOrientation(a);
+                const oB = getOrientation(b);
+                return (orientationOrder[oA] ?? 99) - (orientationOrder[oB] ?? 99);
+              });
+
+              segDisplaySets.forEach((ds, i) => {
+                console.log(
+                  `[SEG-AutoLoad]   SEG ${i}: "${ds.SeriesDescription}", ` +
+                    `ref=${ds.referencedDisplaySetInstanceUID}, overlay=${ds.isOverlayDisplaySet}`
+                );
+              });
+
               const usedViewportIds = new Set<string>();
 
               const findViewportForSeg = (segDS): string | null => {
                 const refUID = segDS.referencedDisplaySetInstanceUID;
 
-                // Priority 1: viewport that already shows the referenced series
+                // Priority 1: viewport already displaying the referenced series
                 if (refUID) {
                   const byRef = allViewports.find(
                     vp =>
@@ -441,56 +459,123 @@ function PanelStudyBrowser({
                       vp.displaySetInstanceUIDs?.includes(refUID)
                   );
                   if (byRef) {
+                    console.log(
+                      `[SEG-AutoLoad]   → matched by referenced series in ${byRef.viewportId}`
+                    );
                     return byRef.viewportId;
                   }
                 }
 
-                // Priority 2: viewport whose orientation matches the SEG description
-                const segOrientation = getSegOrientation(segDS);
+                // Priority 2: viewport whose current series shares the same orientation
+                const segOrientation = getOrientation(segDS);
                 if (segOrientation) {
-                  const byOrientation = allViewports.find(
-                    vp =>
-                      !usedViewportIds.has(vp.viewportId) &&
-                      vp.viewportOptions?.orientation === segOrientation
-                  );
-                  if (byOrientation) {
-                    return byOrientation.viewportId;
+                  const byContent = allViewports.find(vp => {
+                    if (usedViewportIds.has(vp.viewportId)) {
+                      return false;
+                    }
+                    const vpDsUIDs = vp.displaySetInstanceUIDs || [];
+                    return vpDsUIDs.some(uid => {
+                      const ds = displaySetService.getDisplaySetByUID(uid);
+                      return ds && getOrientation(ds) === segOrientation;
+                    });
+                  });
+                  if (byContent) {
+                    console.log(
+                      `[SEG-AutoLoad]   → matched by orientation (${segOrientation}) in ${byContent.viewportId}`
+                    );
+                    return byContent.viewportId;
                   }
                 }
 
                 // Priority 3: first unused viewport
                 const anyFree = allViewports.find(vp => !usedViewportIds.has(vp.viewportId));
+                if (anyFree) {
+                  console.log(
+                    `[SEG-AutoLoad]   → fallback to free viewport ${anyFree.viewportId}`
+                  );
+                }
                 return anyFree?.viewportId ?? null;
               };
 
-              for (let i = 0; i < segDisplaySets.length; i++) {
-                const segDisplaySet = segDisplaySets[i];
-                const viewportId = findViewportForSeg(segDisplaySet);
+              // --- Phase 1: compute viewport ↔ segmentation assignments ---
+              const assignments: Array<{
+                segDisplaySet: any;
+                viewportId: string;
+                referencedDisplaySet: any;
+              }> = [];
 
+              for (const segDisplaySet of segDisplaySets) {
+                const viewportId = findViewportForSeg(segDisplaySet);
                 if (!viewportId) {
                   console.warn(
-                    `No available viewport for segmentation ${segDisplaySet.SeriesInstanceUID} — skipping`
+                    `[SEG-AutoLoad] No viewport for SEG ${segDisplaySet.SeriesInstanceUID}`
+                  );
+                  continue;
+                }
+                usedViewportIds.add(viewportId);
+
+                const referencedDisplaySet = displaySetService.getDisplaySetByUID(
+                  segDisplaySet.referencedDisplaySetInstanceUID
+                );
+                if (!referencedDisplaySet) {
+                  console.warn(
+                    `[SEG-AutoLoad] No referenced display set (refUID=${segDisplaySet.referencedDisplaySetInstanceUID})`
                   );
                   continue;
                 }
 
-                usedViewportIds.add(viewportId);
+                assignments.push({ segDisplaySet, viewportId, referencedDisplaySet });
+              }
 
-                try {
-                  await commandsManager.run('hydrateSecondaryDisplaySet', {
+              if (assignments.length === 0) {
+                console.warn('[SEG-AutoLoad] No valid assignments');
+                return;
+              }
+
+              // --- Phase 2: store segmentation presentations (sync Zustand) ---
+              for (const { segDisplaySet } of assignments) {
+                if (segDisplaySet.isOverlayDisplaySet) {
+                  commandsManager.runCommand('updateStoredSegmentationPresentation', {
                     displaySet: segDisplaySet,
-                    viewportId,
+                    type: 'Labelmap',
                   });
-                  console.log(
-                    `✓ Auto-loaded segmentation ${i + 1}/${segDisplaySets.length}: ${segDisplaySet.SeriesInstanceUID} → viewport ${viewportId}`
-                  );
-                } catch (error) {
-                  console.warn(
-                    `Failed to auto-load segmentation ${segDisplaySet.SeriesInstanceUID}:`,
-                    error
-                  );
                 }
               }
+
+              // --- Phase 3: single batched viewport update ---
+              // needsRerendering forces the viewport component to re-run its
+              // loadViewportData effect, which picks up the segmentation
+              // presentation from the Zustand store.  Without it, viewports
+              // that already display the referenced series would skip the
+              // re-render and never apply the overlay.
+              const viewportsToUpdate = assignments.map(
+                ({ viewportId, referencedDisplaySet }) => ({
+                  viewportId,
+                  displaySetInstanceUIDs: [referencedDisplaySet.displaySetInstanceUID],
+                  viewportOptions: { needsRerendering: true },
+                })
+              );
+
+              console.log(
+                `[SEG-AutoLoad] Batch-updating ${viewportsToUpdate.length} viewport(s): ` +
+                  assignments
+                    .map(
+                      a =>
+                        `${getOrientation(a.segDisplaySet) || '?'} → ${a.viewportId}`
+                    )
+                    .join(', ')
+              );
+
+              commandsManager.runCommand('setDisplaySetsForViewports', {
+                viewportsToUpdate,
+              });
+
+              assignments.forEach(({ segDisplaySet, viewportId }, i) => {
+                console.log(
+                  `✓ [SEG-AutoLoad] ${i + 1}/${assignments.length}: ` +
+                    `${segDisplaySet.SeriesDescription || segDisplaySet.SeriesInstanceUID} → ${viewportId}`
+                );
+              });
             }, 500);
           }, 200);
         }
