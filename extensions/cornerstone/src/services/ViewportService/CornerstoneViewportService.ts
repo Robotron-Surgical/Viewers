@@ -1198,6 +1198,7 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
   ) {
     const { segmentationService } = this.servicesManager.services;
     const segmentationId = displaySet.displaySetInstanceUID;
+    const { predecessorImageId } = displaySet;
 
     // For 3D viewports, don't pass an explicit type so that
     // addSegmentationRepresentation defaults to Surface (which is correct for 3D).
@@ -1205,6 +1206,7 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     if (viewport.type === csEnums.ViewportType.VOLUME_3D) {
       segmentationService.addSegmentationRepresentation(viewport.id, {
         segmentationId,
+        predecessorImageId,
       });
     } else {
       const representationType =
@@ -1214,19 +1216,16 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
 
       segmentationService.addSegmentationRepresentation(viewport.id, {
         segmentationId,
+        predecessorImageId,
         type: representationType,
+        config: {
+          blendMode:
+            viewport?.getBlendMode?.() === 1
+              ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND
+              : undefined,
+        },
       });
     }
-    const { predecessorImageId } = displaySet;
-    segmentationService.addSegmentationRepresentation(viewport.id, {
-      segmentationId,
-      predecessorImageId,
-      type: representationType,
-      config: {
-        blendMode:
-          viewport?.getBlendMode?.() === 1 ? BlendModes.LABELMAP_EDGE_PROJECTION_BLEND : undefined,
-      },
-    });
 
     // store the segmentation presentation id in the viewport info
     this.storePresentation({ viewportId: viewport.id });
