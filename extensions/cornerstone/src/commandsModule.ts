@@ -53,6 +53,7 @@ import { isMeasurementWithinViewport } from './utils/isMeasurementWithinViewport
 import { getCenterExtent } from './utils/getCenterExtent';
 import { EasingFunctionEnum } from './utils/transitions';
 import { collectActiveStudyMetadata } from '../../default/src/utils/collectDicomMetadata';
+import { backendFetch, backendUploadXHR, getBackendUrl, getSessionToken } from '../../default/src/utils/backendApi';
 import { BlobWriter, ZipWriter, BlobReader } from '@zip.js/zip.js';
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import { DicomMetadataStore } from '@ohif/core';
@@ -1059,8 +1060,7 @@ function commandsModule({
 
         reportProgress(25, 'Preparing upload...');
 
-        // @ts-ignore - BACKEND_API_URL is injected at build time
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://localhost:8000';
+        const backendUrl = getBackendUrl();
         console.log('Backend URL:', backendUrl);
 
         const zipFileName = `dicom_study_${new Date().getTime()}.zip`;
@@ -1076,7 +1076,7 @@ function commandsModule({
           });
 
           // Step 1: Get signed URL from backend
-          const signedUrlResponse = await fetch(`${backendUrl}/generate_signed_url`, {
+          const signedUrlResponse = await backendFetch('/generate_signed_url', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1093,7 +1093,7 @@ function commandsModule({
 
           const { upload_url, download_url } = await signedUrlResponse.json();
 
-          // Step 2: Upload to Google Cloud Storage using signed URL
+          // Step 2: Upload to Google Cloud Storage using signed URL (direct to GCS, no auth needed)
           const uploadResponse = await fetch(upload_url, {
             method: 'PUT',
             headers: {
@@ -1107,7 +1107,7 @@ function commandsModule({
           }
 
           // Step 3: Notify backend to process from Cloud Storage
-          const processResponse = await fetch(`${backendUrl}/upload_dicom_from_url`, {
+          const processResponse = await backendFetch('/upload_dicom_from_url', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1130,48 +1130,17 @@ function commandsModule({
           });
         } else {
           // Direct upload for files <= 30MB or localhost
-          const url = `${backendUrl}/upload_dicom`;
-
-          // Create FormData to send the ZIP file and studyInstanceUIDs
           const formData = new FormData();
           formData.append('file', zipBlob, zipFileName);
           formData.append('studyInstanceUIDs', studyInstanceUIDsString);
 
           reportProgress(25, 'Uploading to server...');
 
-          await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-
-            xhr.upload.addEventListener('progress', e => {
-              if (e.lengthComputable) {
-                const uploadProgress = (e.loaded / e.total) * 75 + 25;
-                reportProgress(
-                  uploadProgress,
-                  `Uploading... (${Math.round(uploadProgress - 25)}%)`
-                );
-              }
-            });
-
-            xhr.addEventListener('load', () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                reportProgress(100, 'Upload complete!');
-                resolve(xhr.response);
-              } else {
-                reject(new Error(`Backend responded with status: ${xhr.status}`));
-              }
-            });
-
-            xhr.addEventListener('error', () => {
-              reject(new Error('Network error during upload'));
-            });
-
-            xhr.addEventListener('abort', () => {
-              reject(new Error('Upload aborted'));
-            });
-
-            xhr.open('POST', url);
-            xhr.send(formData);
+          await backendUploadXHR('/upload_dicom', formData, pct => {
+            const uploadProgress = pct * 0.75 + 25;
+            reportProgress(uploadProgress, `Uploading... (${Math.round(pct)}%)`);
           });
+          reportProgress(100, 'Upload complete!');
 
           uiNotificationService.show({
             title: 'DICOM ZIP',

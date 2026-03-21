@@ -11,6 +11,7 @@ import { CallbackCustomization } from 'platform/core/src/types';
 import { BlobReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 import filesToStudies from '../../../../../platform/app/src/routes/Local/filesToStudies.js';
 import { type TabsProps } from '@ohif/core/src/utils/createStudyBrowserTabs';
+import { backendFetch, getBackendUrl } from '../../utils/backendApi';
 
 const { sortStudyInstances, formatDate, createStudyBrowserTabs } = utils;
 
@@ -156,8 +157,7 @@ function PanelStudyBrowser({
       }
 
       try {
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-        const response = await fetch(`${backendUrl}/check_segmentation_status/${studyInstanceUID}`);
+        const response = await backendFetch(`/check_segmentation_status/${studyInstanceUID}`);
 
         if (!response.ok) {
           console.warn(`Failed to check segmentation status: ${response.status}`);
@@ -198,12 +198,10 @@ function PanelStudyBrowser({
           type: 'info',
         });
 
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-
         const response = await retryWithDelay(
           async () => {
-            const res = await fetch(
-              `${backendUrl}/segmentation?studyInstanceUIDs=${studyInstanceUID}`
+            const res = await backendFetch(
+              `/segmentation?studyInstanceUIDs=${studyInstanceUID}`
             );
             if (!res.ok) {
               throw new Error(`Backend responded with status: ${res.status}`);
@@ -810,7 +808,6 @@ function PanelStudyBrowser({
       return;
     }
 
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
     const pollCountRef: Record<string, number> = {};
     const maxPolls = 60;
 
@@ -832,7 +829,7 @@ function PanelStudyBrowser({
       }
 
       try {
-        const response = await fetch(`${backendUrl}/check_conversion_status/${studyUID}`);
+        const response = await backendFetch(`/check_conversion_status/${studyUID}`);
         const data = await response.json();
 
         console.log(`Conversion status for ${studyUID}:`, data);
@@ -1300,12 +1297,10 @@ function PanelStudyBrowser({
       });
 
       try {
-        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-
         const response = await retryWithDelay(
           async () => {
-            const res = await fetch(
-              `${backendUrl}/generate_report?studyInstanceUIDs=${studyInstanceUID}`
+            const res = await backendFetch(
+              `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
             );
             if (!res.ok) {
               throw new Error(`Backend responded with status: ${res.status}`);
@@ -1489,13 +1484,11 @@ function PanelStudyBrowser({
             type: 'info',
           });
 
-          const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-
           // Step 1: Fetch the PDF report from backend
           const response = await retryWithDelay(
             async () => {
-              const res = await fetch(
-                `${backendUrl}/generate_report?studyInstanceUIDs=${studyInstanceUID}`
+              const res = await backendFetch(
+                `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
               );
               if (!res.ok) {
                 throw new Error(`Backend responded with status: ${res.status}`);
@@ -1754,12 +1747,10 @@ function PanelStudyBrowser({
           });
         } else {
           // No cached report, generate it
-          const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-
           const response = await retryWithDelay(
             async () => {
-              const res = await fetch(
-                `${backendUrl}/generate_report?studyInstanceUIDs=${studyInstanceUID}`
+              const res = await backendFetch(
+                `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
               );
               if (!res.ok) {
                 throw new Error(`Backend responded with status: ${res.status}`);
