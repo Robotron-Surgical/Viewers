@@ -32,9 +32,12 @@ async function _initSession(): Promise<string> {
     throw new Error(`Failed to create session: ${res.status}`);
   }
   const data = await res.json();
+  if (typeof data.access_token !== 'string' || typeof data.session_id !== 'string') {
+    throw new Error('Invalid session response: access_token and session_id must be strings');
+  }
   sessionStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
   sessionStorage.setItem(SESSION_ID_STORAGE_KEY, data.session_id);
-  return data.access_token as string;
+  return data.access_token;
 }
 
 /**
