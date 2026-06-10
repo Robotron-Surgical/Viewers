@@ -28,9 +28,9 @@ const OHIF_PORT = Number(process.env.OHIF_PORT || 3000);
 const OHIF_OPEN = process.env.OHIF_OPEN !== 'false';
 
 // Backend API URL (defaults to localhost)
-// Production example: https://backend-ohif-1084552301744.us-central1.run.app
+// Production example: https://mri-report-781972407645.us-central1.run.app
 const BACKEND_API_URL =
-  process.env.BACKEND_API_URL || 'https://backend-ohif-1084552301744.us-central1.run.app';
+  process.env.BACKEND_API_URL || 'https://mri-report-781972407645.us-central1.run.app';
 
 export default defineConfig({
   source: {
