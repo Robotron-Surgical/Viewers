@@ -120,3 +120,95 @@ export async function backendUploadXHR(
     xhr.send(formData);
   });
 }
+
+async function errorDetail(response: Response): Promise<string> {
+  const text = await response.text().catch(() => '');
+  try {
+    const data = JSON.parse(text);
+    const message = data?.error ?? data?.detail;
+    if (typeof message === 'string') {
+      return message;
+    }
+  } catch {
+    // Not JSON; fall back to the raw body.
+  }
+  return text || response.statusText;
+}
+
+/**
+ * GET an artifact (ZIP or PDF) that the backend produces within the request.
+ * Throws with the backend's `detail` message so callers can show it to the user.
+ */
+export async function backendGetArtifact(path: string): Promise<Blob> {
+  const response = await backendFetch(path);
+  if (!response.ok) {
+    throw new Error(`${await errorDetail(response)} (HTTP ${response.status})`);
+  }
+  return response.blob();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export type JobStatusPayload = {
+  job_status?: string | null;
+  job_error?: string | null;
+  segmentation_exists?: boolean;
+  report_exists?: boolean;
+  conversion_complete?: boolean;
+  message?: string;
+};
+
+/**
+ * POST to enqueue a backend job, poll a JSON status endpoint, then GET the artifact.
+ */
+export async function enqueuePollDownload(options: {
+  enqueuePath: string;
+  statusPath: string;
+  downloadPath: string;
+  isReady: (data: JobStatusPayload) => boolean;
+  isFailed?: (data: JobStatusPayload) => boolean;
+  onTick?: (data: JobStatusPayload) => void;
+  intervalMs?: number;
+  timeoutMs?: number;
+}): Promise<Response> {
+  const {
+    enqueuePath,
+    statusPath,
+    downloadPath,
+    isReady,
+    isFailed = data => data.job_status === 'failed',
+    onTick,
+    intervalMs = 3000,
+    timeoutMs = 30 * 60 * 1000,
+  } = options;
+
+  const started = await backendFetch(enqueuePath, { method: 'POST' });
+  if (!started.ok) {
+    const text = await started.text().catch(() => '');
+    throw new Error(`Failed to enqueue job (${started.status}): ${text || started.statusText}`);
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const statusRes = await backendFetch(statusPath);
+    if (statusRes.ok) {
+      const data = (await statusRes.json()) as JobStatusPayload;
+      onTick?.(data);
+      if (isFailed(data)) {
+        throw new Error(data.job_error || data.message || 'Backend job failed');
+      }
+      if (isReady(data)) {
+        const download = await backendFetch(downloadPath);
+        if (!download.ok) {
+          throw new Error(`Artifact download failed (${download.status})`);
+        }
+        return download;
+      }
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error('Timed out waiting for backend job');
+}
+

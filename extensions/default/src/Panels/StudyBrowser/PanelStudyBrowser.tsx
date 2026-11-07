@@ -11,45 +11,17 @@ import { CallbackCustomization } from 'platform/core/src/types';
 import { BlobReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 import filesToStudies from '../../../../../platform/app/src/routes/Local/filesToStudies.js';
 import { type TabsProps } from '@ohif/core/src/utils/createStudyBrowserTabs';
-import { backendFetch, getBackendUrl } from '../../utils/backendApi';
+import { backendFetch, backendGetArtifact, getBackendUrl } from '../../utils/backendApi';
 
 const { sortStudyInstances, formatDate, createStudyBrowserTabs } = utils;
 
 const thumbnailNoImageModalities = ['SR', 'RTSTRUCT', 'RTPLAN', 'RTDOSE', 'DOC', 'PMAP'];
 const hiddenModalities = ['SEG'];
 
-/**
- * Retry utility function that attempts an async operation up to maxRetries times
- * with a delay between attempts
- */
-async function retryWithDelay<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delayMs: number = 3000,
-  suppressWarnings: boolean = true
-): Promise<T> {
-  let lastError: Error;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (!suppressWarnings || attempt === maxRetries) {
-        console.error(`Attempt ${attempt}/${maxRetries} failed:`, error);
-      }
-
-      if (attempt < maxRetries) {
-        if (!suppressWarnings) {
-          console.log(`Retrying in ${delayMs / 1000} seconds...`);
-        }
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    }
-  }
-
-  throw lastError;
+function fetchReportPdf(studyInstanceUID: string): Promise<Blob> {
+  return backendGetArtifact(
+    `/generate_report?studyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`
+  );
 }
 
 /**
@@ -194,29 +166,17 @@ function PanelStudyBrowser({
       try {
         uiNotificationService.show({
           title: 'Segmentation',
-          message: 'Fetching segmentation files from backend...',
+          message: 'Starting segmentation...',
           type: 'info',
         });
 
-        const response = await retryWithDelay(
-          async () => {
-            const res = await backendFetch(
-              `/segmentation?studyInstanceUIDs=${studyInstanceUID}`
-            );
-            if (!res.ok) {
-              throw new Error(`Backend responded with status: ${res.status}`);
-            }
-            return res;
-          },
-          3,
-          3000,
-          true
+        setSegmentationStage('Running segmentation...');
+        const blob = await backendGetArtifact(
+          `/segmentation?studyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`
         );
 
-        setSegmentationStage('Downloading segmentation archive...');
+        setSegmentationStage('Unpacking segmentation archive...');
         setSegmentationProgress(25);
-
-        const blob = await response.blob();
         const zipReader = new ZipReader(new BlobReader(blob));
         const entries = await zipReader.getEntries();
 
@@ -1297,22 +1257,7 @@ function PanelStudyBrowser({
       });
 
       try {
-        const response = await retryWithDelay(
-          async () => {
-            const res = await backendFetch(
-              `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
-            );
-            if (!res.ok) {
-              throw new Error(`Backend responded with status: ${res.status}`);
-            }
-            return res;
-          },
-          3,
-          3000,
-          true
-        );
-
-        const blob = await response.blob();
+        const blob = await fetchReportPdf(studyInstanceUID);
         const blobUrl = URL.createObjectURL(blob);
 
         // Cache the blob URL for this study
@@ -1485,22 +1430,7 @@ function PanelStudyBrowser({
           });
 
           // Step 1: Fetch the PDF report from backend
-          const response = await retryWithDelay(
-            async () => {
-              const res = await backendFetch(
-                `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
-              );
-              if (!res.ok) {
-                throw new Error(`Backend responded with status: ${res.status}`);
-              }
-              return res;
-            },
-            3,
-            3000,
-            true
-          );
-
-          pdfBlob = await response.blob();
+          pdfBlob = await fetchReportPdf(studyInstanceUID);
 
           // Cache the blob URL for future use
           const blobUrl = URL.createObjectURL(pdfBlob);
@@ -1747,22 +1677,7 @@ function PanelStudyBrowser({
           });
         } else {
           // No cached report, generate it
-          const response = await retryWithDelay(
-            async () => {
-              const res = await backendFetch(
-                `/generate_report?studyInstanceUIDs=${studyInstanceUID}`
-              );
-              if (!res.ok) {
-                throw new Error(`Backend responded with status: ${res.status}`);
-              }
-              return res;
-            },
-            3,
-            3000,
-            true
-          );
-
-          pdfBlob = await response.blob();
+          pdfBlob = await fetchReportPdf(studyInstanceUID);
           blobUrl = URL.createObjectURL(pdfBlob);
 
           // Cache the blob URL for this study
