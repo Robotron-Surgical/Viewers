@@ -10,9 +10,9 @@ module.exports = {
             modules: 'commonjs',
             debug: false,
           },
-          '@babel/preset-typescript',
         ],
         '@babel/preset-react',
+        '@babel/preset-typescript',
       ],
       plugins: [
         '@babel/plugin-transform-object-rest-spread',
