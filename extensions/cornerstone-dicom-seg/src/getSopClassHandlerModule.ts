@@ -6,6 +6,11 @@ import { adaptersSEG, Enums } from '@cornerstonejs/adapters';
 
 import { SOPClassHandlerId } from './id';
 import { dicomlabToRGB } from './utils/dicomlabToRGB';
+import {
+  getSegImageOrientationPatient,
+  imageOrientationFromPlaneModule,
+  orderImageIdsForSegPlane,
+} from './utils/orderImageIdsForSegPlane';
 
 const sopClassUids = ['1.2.840.10008.5.1.4.1.1.66.4', '1.2.840.10008.5.1.4.1.1.66.7'];
 
@@ -203,6 +208,25 @@ async function _loadSegments({
 
   // Todo: what should be defaults here
   const tolerance = 0.001;
+  // The adapter accepts a SEG only when imageIds[0] lies in the SEG plane.
+  // Stacked axial blocks in one series do not, so promote a matching slice.
+  const segOrientation = getSegImageOrientationPatient(arrayBuffer);
+  const sourceOrientations = imageIds.map(imageId =>
+    imageOrientationFromPlaneModule(metaData.get('imagePlaneModule', imageId))
+  );
+  const imageIdsForSeg = orderImageIdsForSegPlane(
+    imageIds,
+    sourceOrientations,
+    segOrientation,
+    tolerance
+  );
+  if (imageIdsForSeg[0] !== imageIds[0]) {
+    console.warn(
+      '[DICOM SEG] Series contains more than one acquisition plane. ' +
+        'The segmentation is loaded against the slice that shares its plane.'
+    );
+  }
+
   eventTarget.addEventListener(Enums.Events.SEGMENTATION_LOAD_PROGRESS, evt => {
     const { percentComplete } = evt.detail;
     segmentationService._broadcastEvent(segmentationService.EVENTS.SEGMENT_LOADING_COMPLETE, {
@@ -211,7 +235,7 @@ async function _loadSegments({
   });
 
   const results = await adaptersSEG.Cornerstone3D.Segmentation.createFromDICOMSegBuffer(
-    imageIds,
+    imageIdsForSeg,
     arrayBuffer,
     { metadataProvider: metaData, tolerance }
   );
