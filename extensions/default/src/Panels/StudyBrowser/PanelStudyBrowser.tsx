@@ -88,6 +88,16 @@ function PanelStudyBrowser({
   const [segmentationStage, setSegmentationStage] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadStage, setUploadStage] = useState<string>('');
+  const selectiveUploadKey = 'mri_genius_selective_upload';
+  const [selectiveUpload, setSelectiveUpload] = useState(() => {
+    try {
+      return localStorage.getItem(selectiveUploadKey) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const selectiveUploadRef = useRef(selectiveUpload);
+  selectiveUploadRef.current = selectiveUpload;
 
   // Cache for generated reports (studyUID -> blob URL)
   const reportCacheRef = useRef<Map<string, string>>(new Map());
@@ -731,8 +741,9 @@ function PanelStudyBrowser({
           setUploadStage(`Uploading study ${i + 1} of ${StudyInstanceUIDs.length}...`);
 
           try {
-            await commandsManager.runCommand('sendDicomZipToBackend', {
+            const result = await commandsManager.runCommand('sendDicomZipToBackend', {
               studyInstanceUIDs: [studyUID], // Send single study
+              selective: selectiveUploadRef.current,
               onProgress: (progress: number, stage: string) => {
                 // Adjust progress to account for multiple studies
                 const baseProgress = (i / StudyInstanceUIDs.length) * 100;
@@ -741,8 +752,12 @@ function PanelStudyBrowser({
                 setUploadStage(`Study ${i + 1}/${StudyInstanceUIDs.length}: ${stage}`);
               },
             });
-            sessionStorage.setItem(uploadKey, 'true');
-            console.log(`✓ Study ${studyUID} uploaded successfully`);
+            if (result?.uploaded) {
+              sessionStorage.setItem(uploadKey, 'true');
+              console.log(`✓ Study ${studyUID} uploaded successfully`);
+            } else {
+              console.warn(`Study ${studyUID} was not uploaded`, result?.message || '');
+            }
           } catch (error) {
             console.error(`Failed to upload study ${studyUID}:`, error);
           }
@@ -2124,6 +2139,22 @@ function PanelStudyBrowser({
           thickness="2px"
         />
         <div className="flex flex-col gap-2 p-2">
+          <label className="flex items-center gap-2 px-2 text-xs text-white">
+            <input
+              type="checkbox"
+              checked={selectiveUpload}
+              onChange={event => {
+                const next = event.target.checked;
+                setSelectiveUpload(next);
+                try {
+                  localStorage.setItem(selectiveUploadKey, String(next));
+                } catch {
+                  // Preference stays in memory when storage is blocked.
+                }
+              }}
+            />
+            Send only series used for the report
+          </label>
           {isUploadingDicom && uploadProgress > 0 && (
             <div className="flex flex-col gap-1 px-2">
               <div className="flex items-center justify-between text-xs text-white">

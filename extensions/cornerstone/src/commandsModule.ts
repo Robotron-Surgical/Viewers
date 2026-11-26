@@ -54,6 +54,10 @@ import { getCenterExtent } from './utils/getCenterExtent';
 import { EasingFunctionEnum } from './utils/transitions';
 import { collectActiveStudyMetadata } from '../../default/src/utils/collectDicomMetadata';
 import { backendFetch, backendUploadXHR, getBackendUrl, getSessionToken } from '../../default/src/utils/backendApi';
+import {
+  countLocalSeries,
+  seriesHeadersFromStudy,
+} from './utils/selectUploadSeries';
 import { BlobWriter, ZipWriter, BlobReader } from '@zip.js/zip.js';
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import { DicomMetadataStore } from '@ohif/core';
@@ -207,6 +211,74 @@ function commandsModule({
         );
       }
     };
+  };
+
+  const selectSeriesToUpload = async (studyInstanceUIDs, reportProgress) => {
+    const allowedSeries = new Set<string>();
+    let kept = 0;
+    let available = 0;
+
+    for (const studyInstanceUID of studyInstanceUIDs) {
+      const study = DicomMetadataStore.getStudy(studyInstanceUID);
+      const headers = seriesHeadersFromStudy(study);
+      available += countLocalSeries(study);
+      if (!headers.length) {
+        continue;
+      }
+
+      reportProgress(8, 'Choosing series to send...');
+      let response: Response;
+      try {
+        response = await backendFetch(
+          `/select_upload_series/${encodeURIComponent(studyInstanceUID)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ series: headers }),
+          }
+        );
+      } catch (error) {
+        console.warn('Series preflight failed, sending all DICOM files', error);
+        uiNotificationService.show({
+          title: 'DICOM ZIP',
+          message: 'Could not choose series on the server. Sending all DICOM files.',
+          type: 'warning',
+        });
+        return { refused: false, allowedSeries: null };
+      }
+
+      if (!response.ok) {
+        console.warn('Series preflight returned', response.status, '- sending all DICOM files');
+        uiNotificationService.show({
+          title: 'DICOM ZIP',
+          message: 'Could not choose series on the server. Sending all DICOM files.',
+          type: 'warning',
+        });
+        return { refused: false, allowedSeries: null };
+      }
+
+      const body = await response.json();
+      const chosen = body.series || [];
+      if (body.upload !== true || chosen.length === 0) {
+        return {
+          refused: true,
+          allowedSeries: null,
+          message: body.message || 'No series were selected for upload.',
+        };
+      }
+
+      for (const series of chosen) {
+        if (series.seriesInstanceUID) {
+          allowedSeries.add(series.seriesInstanceUID);
+          kept += 1;
+        }
+      }
+    }
+
+    if (available > 0) {
+      reportProgress(12, `Sending ${kept} of ${available} series`);
+    }
+    return { refused: false, allowedSeries };
   };
 
   const actions = {
@@ -954,11 +1026,11 @@ function commandsModule({
       }
     },
 
-    sendDicomZipToBackend: async ({ studyInstanceUIDs, onProgress }) => {
+    sendDicomZipToBackend: async ({ studyInstanceUIDs, onProgress, selective = true }) => {
       try {
         if (!studyInstanceUIDs || studyInstanceUIDs.length === 0) {
           console.error('No studyInstanceUIDs provided');
-          return null;
+          return { uploaded: false };
         }
 
         const reportProgress = (progress: number, stage: string) => {
@@ -968,6 +1040,20 @@ function commandsModule({
         };
 
         reportProgress(5, 'Preparing DICOM files...');
+
+        let allowedSeries: Set<string> | null = null;
+        if (selective) {
+          const selection = await selectSeriesToUpload(studyInstanceUIDs, reportProgress);
+          if (selection.refused) {
+            uiNotificationService.show({
+              title: 'DICOM ZIP',
+              message: selection.message,
+              type: 'warning',
+            });
+            return { uploaded: false, message: selection.message };
+          }
+          allowedSeries = selection.allowedSeries;
+        }
 
         uiNotificationService.show({
           title: 'DICOM ZIP',
@@ -983,12 +1069,20 @@ function commandsModule({
         let fileCount = 0;
         const fileManager = dicomImageLoader.wadouri.fileManager;
 
+        const seriesIsSelected = series => {
+          if (!allowedSeries) {
+            return true;
+          }
+          const uid = series.SeriesInstanceUID || series.instances?.[0]?.SeriesInstanceUID;
+          return Boolean(uid && allowedSeries.has(uid));
+        };
+
         let totalFiles = 0;
         for (const studyInstanceUID of studyInstanceUIDs) {
           const study = DicomMetadataStore.getStudy(studyInstanceUID);
           if (study?.series) {
             study.series.forEach(s => {
-              if (s.instances) {
+              if (s.instances && seriesIsSelected(s)) {
                 totalFiles += s.instances.length;
               }
             });
@@ -1003,7 +1097,7 @@ function commandsModule({
           }
 
           for (const series of study.series) {
-            if (!series.instances) {
+            if (!series.instances || !seriesIsSelected(series)) {
               continue;
             }
 
@@ -1051,7 +1145,7 @@ function commandsModule({
             message: 'No local DICOM files found to send',
             type: 'warning',
           });
-          return null;
+          return { uploaded: false };
         }
 
         reportProgress(20, 'Finalizing ZIP file...');
@@ -1128,6 +1222,7 @@ function commandsModule({
             message: `Successfully uploaded ${fileCount} DICOM files (${fileSizeInMB.toFixed(1)}MB) via Cloud Storage`,
             type: 'success',
           });
+          return { uploaded: true, studyInstanceUIDs: studyInstanceUIDsString };
         } else {
           // Direct upload for files <= 30MB or localhost
           const formData = new FormData();
@@ -1149,7 +1244,7 @@ function commandsModule({
           });
         }
 
-        return studyInstanceUIDsString;
+        return { uploaded: true, studyInstanceUIDs: studyInstanceUIDsString };
       } catch (error) {
         console.error('Error sending DICOM ZIP to backend:', error);
         uiNotificationService.show({
@@ -1157,7 +1252,7 @@ function commandsModule({
           message: `Failed to send DICOM ZIP to backend: ${error.message || error.toString()}`,
           type: 'error',
         });
-        return null;
+        return { uploaded: false };
       }
     },
 
